@@ -7,7 +7,7 @@
 ## Install
 
 ```bash
-claude plugin marketplace add luanmorenommaciel/agentspec
+claude plugin marketplace add matheusjerico/agentspec
 claude plugin install agentspec
 ```
 

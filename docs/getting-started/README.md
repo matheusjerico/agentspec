@@ -12,21 +12,21 @@ Get from zero to your first spec-driven data pipeline in 10 minutes.
 ### Option 1: Install as Plugin (Recommended)
 
 ```bash
-claude plugin marketplace add luanmorenommaciel/agentspec
+claude plugin marketplace add matheusjerico/agentspec
 claude plugin install agentspec
 ```
 
 Or test locally:
 
 ```bash
-git clone https://github.com/luanmorenommaciel/agentspec.git
+git clone https://github.com/matheusjerico/agentspec.git
 claude --plugin-dir ./agentspec/plugin
 ```
 
 ### Option 2: Copy Framework (Legacy)
 
 ```bash
-git clone https://github.com/luanmorenommaciel/agentspec.git
+git clone https://github.com/matheusjerico/agentspec.git
 cp -r agentspec/.claude your-project/.claude
 ```
 

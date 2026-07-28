@@ -30,5 +30,5 @@
 
 ## Need Help?
 
-- [GitHub Issues](https://github.com/luanmorenommaciel/agentspec/issues) -- Bug reports
-- [Discussions](https://github.com/luanmorenommaciel/agentspec/discussions) -- Questions and ideas
+- [GitHub Issues](https://github.com/matheusjerico/agentspec/issues) -- Bug reports
+- [Discussions](https://github.com/matheusjerico/agentspec/discussions) -- Questions and ideas

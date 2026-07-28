@@ -5,7 +5,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do NOT open a public issue**
-2. Email the maintainers directly or use [GitHub Security Advisories](https://github.com/luanmorenommaciel/agentspec/security/advisories/new)
+2. Email the maintainers directly or use [GitHub Security Advisories](https://github.com/matheusjerico/agentspec/security/advisories/new)
 3. Include steps to reproduce, impact assessment, and suggested fix if possible
 
 ## Response Timeline
