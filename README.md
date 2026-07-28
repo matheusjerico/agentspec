@@ -35,7 +35,7 @@ AgentSpec solves this with **Spec-Driven Data Engineering**: a 5-phase workflow 
 
 ```bash
 # Install the plugin (one-time)
-claude plugin marketplace add luanmorenommaciel/agentspec
+claude plugin marketplace add matheusjerico/agentspec
 claude plugin install agentspec
 ```
 
@@ -52,11 +52,11 @@ claude plugin update agentspec
 
 ```bash
 # Local testing (no install needed)
-git clone https://github.com/luanmorenommaciel/agentspec.git
+git clone https://github.com/matheusjerico/agentspec.git
 claude --plugin-dir ./agentspec/plugin
 
 # Legacy copy (pre-plugin, still works)
-git clone https://github.com/luanmorenommaciel/agentspec.git
+git clone https://github.com/matheusjerico/agentspec.git
 cp -r agentspec/.claude your-project/.claude
 ```
 

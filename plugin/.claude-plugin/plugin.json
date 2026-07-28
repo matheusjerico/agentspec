@@ -3,12 +3,12 @@
   "version": "3.2.0",
   "description": "Spec-Driven Development framework for Data Engineering — 58 agents, 24 KB domains, 5-phase SDD workflow, 31 commands",
   "author": {
-    "name": "Luan Moreno",
-    "url": "https://github.com/luanmorenommaciel"
+    "name": "Matheus Jericó",
+    "url": "https://github.com/matheusjerico"
   },
   "license": "MIT",
-  "repository": "https://github.com/luanmorenommaciel/agentspec",
-  "homepage": "https://github.com/luanmorenommaciel/agentspec",
+  "repository": "https://github.com/matheusjerico/agentspec",
+  "homepage": "https://github.com/matheusjerico/agentspec",
   "keywords": [
     "data-engineering",
     "sdd",
