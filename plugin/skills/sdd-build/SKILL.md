@@ -173,6 +173,18 @@ provisioning sub-flow. Delegation proceeds only after the new specialist's
 citation verifies, or degrades to `(general)` + WARN per that skill's
 degradation rules. The skill owns the methodology; this branch only invokes it.
 
+### KB promotion on reuse (specialist-kb-bootstrap)
+
+Before delegating to an agent, check each of its `kb_domains`: if the domain's
+`index.md` opens with `> **Provenance**: auto-generated` and this run's
+promotion budget is unspent (max 1 upgrade per run), append the `--validated`
+upgrade (`kb-build`) as the run's FINAL task — best-effort: failure records
+WARN, never a blocker. Budget spent, or further unvalidated domains → provenance
+row `upgrade deferred — promotion budget spent`. All semantics — sensor, budget,
+header flip, revert — are owned by
+`${CLAUDE_PLUGIN_ROOT}/skills/specialist-autoprovision/SKILL.md` (KB bootstrap section); this
+branch only invokes them.
+
 ### Delegation protocol
 
 1. Extract the agent name from the manifest

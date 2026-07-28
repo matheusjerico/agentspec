@@ -308,7 +308,7 @@ Skills are reusable capability packs in `.claude/skills/` that provide templates
 | `sdd-ship` | Phase 4 methodology — completion verification, archival, lessons learned | Loaded by ship-agent + `/ship` |
 | `sdd-iterate` | Cross-phase methodology — change classification, cascade analysis, version tracking | Loaded by iterate-agent + `/iterate` |
 | `sdd-autopilot` | Autonomous full-workflow gate policy — proceed/retry/abort rules, auto-mode conduct overrides, resume protocol, RUN REPORT obligations | Loaded by `/auto` + `scripts/autopilot.sh` |
-| `specialist-autoprovision` | Citation-based specialist-gap sensor + JIT provisioning sub-flow (layer gate → SOP authoring → hygiene grep → router regeneration → citation verification); loud status-quo degradation, never silent | Hooked by `sdd-design` Step 4.5 + `sdd-build` delegation safety net; Gate P in `sdd-autopilot` |
+| `specialist-autoprovision` | Citation-based specialist-gap sensor + JIT provisioning sub-flow (layer gate → SOP authoring → hygiene grep → router regeneration → citation verification); KB bootstrap — generated agents born with a light source-validated KB (structural claims cite official docs, provenance header), promoted to `--validated` on reuse with a 1-upgrade-per-run budget; loud status-quo degradation, never silent | Hooked by `sdd-design` Step 4.5 + `sdd-build` (delegation safety net + KB promotion); Gate P in `sdd-autopilot` |
 
 ### Repo-Local Skills (not distributed)
 

@@ -284,7 +284,7 @@ Data engineering example:
 | `.claude/skills/component-model/` + `.claude/kb/shared/component-model.md` | The layer-decision skill + the canonical component model it operationalizes |
 | `.claude/skills/create-skill/` · `create-agent/` · `kb-build/` | Authoring SOPs: new skills and agents (repo-local; create-skill defers to upstream `skill-creator`), high-assurance KB domains |
 | `.claude/skills/sdd-*/` | Per-phase SDD methodology (brainstorm, define, design, build, ship, iterate) — loaded by the thin phase agents and commands; `sdd-workflow` is the umbrella; `sdd-autopilot` is the single-source gate policy behind `/auto` and `scripts/autopilot.sh` |
-| `.claude/skills/specialist-autoprovision/` | Citation-based specialist-gap sensor + JIT provisioning sub-flow — hooked by `sdd-design` (Step 4.5) and `sdd-build` (delegation safety net); autonomous policy is Gate P in `sdd-autopilot` |
+| `.claude/skills/specialist-autoprovision/` | Citation-based specialist-gap sensor + JIT provisioning sub-flow — hooked by `sdd-design` (Step 4.5) and `sdd-build` (delegation safety net + KB promotion on reuse); autonomous policy is Gate P in `sdd-autopilot`. KB bootstrap: generated agents born with a light source-validated KB (`kb-architect`), promoted to `--validated` on reuse (1 upgrade/run) |
 | `.claude/skills/meeting-analysis/` · `standup-report/` | Team communication: transcript analysis, daily standup (repo-local — excluded from the distributed plugin via `REPO_LOCAL_SKILLS` in `build-plugin.sh`) |
 | `.claude/skills/rollout-agentspec/` | Vendored-install rollout (repo-local): drives `scripts/rollout-agentspec.sh` through dry-run → confirm → `--apply` → verify → rollback; targets live in the gitignored `.agentspec-rollout-targets` |
 
