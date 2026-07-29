@@ -337,3 +337,214 @@ def test_build_phase_missing_report_contract_block_is_error_exit_two(
     code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
     assert code == 2
     assert "ERROR:" in capsys.readouterr().err
+
+
+# --- --phase define (DefinePhaseContract) ------------------------------------
+
+
+_DEFINE_REQUIRED_SECTIONS = [
+    "metadata",
+    "problem_statement",
+    "target_users",
+    "goals",
+    "success_criteria",
+    "acceptance_tests",
+    "out_of_scope",
+    "constraints",
+    "assumptions",
+    "clarity_score_breakdown",
+    "open_questions",
+    "revision_history",
+]
+
+
+def _define_contracts_data() -> dict[str, Any]:
+    return {
+        "define": {"required_sections": _DEFINE_REQUIRED_SECTIONS},
+        "risk_profiles": {
+            "rollout": "observe_warn",
+            "levels": ["low", "medium", "high", "critical"],
+            "dimensions": [
+                "data_loss",
+                "security",
+                "reversibility",
+                "blast_radius",
+                "migration",
+            ],
+            "dimension_values": ["none", "low", "medium", "high", "critical"],
+            "override": {"required_fields": ["author", "rationale"]},
+            "legacy": {"effective_level": "medium", "mode": "WARN"},
+        },
+    }
+
+
+def _write_define_contracts(path: Path) -> Path:
+    path.write_text(yaml.safe_dump(_define_contracts_data()))
+    return path
+
+
+def _write_define_doc(path: Path, text: str) -> Path:
+    path.write_text(text)
+    return path
+
+
+_VALID_DEFINE_DOC = """\
+# DEFINE: CLI_SAMPLE
+
+## Metadata
+
+Feature metadata.
+
+## Problem Statement
+
+Sample problem statement.
+
+## Target Users
+
+Sample target users.
+
+## Goals
+
+- MUST support sample goal.
+
+## Success Criteria
+
+- Sample succeeds.
+
+## Acceptance Tests
+
+- Given/when/then.
+
+## Out of Scope
+
+- Not covered here.
+
+## Constraints
+
+- Sample constraint.
+
+## Risk Profile
+
+```yaml
+risk_profile:
+  level: medium
+  dimensions:
+    data_loss: medium
+    security: medium
+    reversibility: medium
+    blast_radius: medium
+    migration: medium
+  override:
+    applied: false
+    author: null
+    rationale: null
+```
+
+## Assumptions
+
+- Sample assumption.
+
+## Clarity Score Breakdown
+
+- 15/15.
+
+## Open Questions
+
+- None.
+
+## Revision History
+
+- Initial draft.
+"""
+
+
+def _define_doc_without_profile() -> str:
+    """`_VALID_DEFINE_DOC` with its `## Risk Profile` section removed —
+    every required section still present, no Risk Profile block at all."""
+    start = _VALID_DEFINE_DOC.index("## Risk Profile")
+    end = _VALID_DEFINE_DOC.index("## Assumptions")
+    return _VALID_DEFINE_DOC[:start] + _VALID_DEFINE_DOC[end:]
+
+
+def test_define_phase_valid_doc_with_profile_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_define_contracts(tmp_path / "contracts.yaml")
+    doc = _write_define_doc(tmp_path / "DEFINE_CLI_SAMPLE.md", _VALID_DEFINE_DOC)
+    code = cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)])
+    assert code == 0
+    assert "VERDICT: PASS" in capsys.readouterr().out
+
+
+def test_define_phase_without_profile_warns_but_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_define_contracts(tmp_path / "contracts.yaml")
+    doc = _write_define_doc(tmp_path / "DEFINE_CLI_SAMPLE.md", _define_doc_without_profile())
+    code = cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "VERDICT: WARN" in out
+    assert "RP.profile_missing" in out
+
+
+def test_define_phase_falls_back_to_plain_contract_without_risk_profiles_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _define_contracts_data()
+    del data["risk_profiles"]
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = _write_define_doc(tmp_path / "DEFINE_CLI_SAMPLE.md", _define_doc_without_profile())
+    code = cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "RP." not in out
+
+
+def test_define_phase_risk_profiles_missing_levels_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _define_contracts_data()
+    del data["risk_profiles"]["levels"]
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = _write_define_doc(tmp_path / "DEFINE_CLI_SAMPLE.md", _VALID_DEFINE_DOC)
+    code = cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err
+
+
+def test_define_phase_missing_required_section_with_valid_profile_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_define_contracts(tmp_path / "contracts.yaml")
+    start = _VALID_DEFINE_DOC.index("## Out of Scope")
+    end = _VALID_DEFINE_DOC.index("## Constraints")
+    missing_section_doc = _VALID_DEFINE_DOC[:start] + _VALID_DEFINE_DOC[end:]
+    doc = _write_define_doc(tmp_path / "DEFINE_CLI_SAMPLE.md", missing_section_doc)
+    code = cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "L2.required_section" in out
+
+
+def test_define_phase_levels_not_rank_comparable_is_error_exit_two(tmp_path, capsys):
+    data = _define_contracts_data()
+    data["risk_profiles"]["levels"] = ["critical", "high", "medium", "low"]
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = tmp_path / "DEFINE_X.md"
+    doc.write_text(_VALID_DEFINE_DOC)
+    assert cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)]) == 2
+
+
+def test_define_phase_legacy_level_outside_levels_is_error_exit_two(tmp_path, capsys):
+    data = _define_contracts_data()
+    data["risk_profiles"]["legacy"]["effective_level"] = "meduim"
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = tmp_path / "DEFINE_X.md"
+    doc.write_text(_VALID_DEFINE_DOC)
+    assert cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)]) == 2

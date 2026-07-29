@@ -135,6 +135,33 @@ Explicitly NOT included in this feature:
 
 ---
 
+## Risk Profile
+
+> Derived in Phase 1 (sdd-define): level = max(dimension values), raised to any
+> applicable elevation floor (`WORKFLOW_CONTRACTS.yaml` → `risk_profiles`).
+> Overrides require author + rationale and never remove the CRITICAL halt.
+> Observe/Warn rollout: a missing or malformed profile is a WARN (effective
+> level `medium` assumed), never a blocker.
+
+```yaml
+risk_profile:
+  level: {low / medium / high / critical}
+  reasons:
+    - "{why this level — cite the dimension or elevation rule}"
+  dimensions:
+    data_loss: {none / low / medium / high / critical}
+    security: {none / low / medium / high / critical}
+    reversibility: {none / low / medium / high / critical}
+    blast_radius: {none / low / medium / high / critical}
+    migration: {none / low / medium / high / critical}
+  override:
+    applied: false
+    author: null
+    rationale: null
+```
+
+---
+
 ## Assumptions
 
 Assumptions that if wrong could invalidate the design:

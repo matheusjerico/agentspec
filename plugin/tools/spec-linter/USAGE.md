@@ -119,6 +119,14 @@ verdict output goes to stdout.
   runs) maps it to WARN with migration guidance, `--legacy-mode fail`
   (Autopilot's invocation) maps it to FAIL. A parseable `dirty`/`missing`
   verdict on a legacy report still FAILs in both modes (fail-closed).
+- **Define-phase risk rules** (`--phase define`): when the contracts YAML
+  carries a `risk_profiles` block, the define phase routes to a
+  `DefinePhaseContract` — the same FAIL-level section-presence semantics plus
+  WARN-only `RP.*` findings (Observe/Warn rollout, exit stays 0): missing or
+  unparseable profile ⇒ effective level `medium` assumed and named; invalid
+  level or dimension vocabulary; override applied without author+rationale;
+  declared level below the max declared dimension. Without the block, the
+  phase falls back to the plain section check (backward compatible).
 - **Schema emission** (`--emit-schema OUT.json`): writes the reference
   contract's JSON Schema to `OUT.json`, creating parent directories as needed
   (combine with a path to also lint; alone it just writes and exits 0).

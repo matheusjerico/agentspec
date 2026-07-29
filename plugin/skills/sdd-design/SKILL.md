@@ -79,6 +79,11 @@ Grep("class |def ") | sample
 
 Then load KB patterns from the domains named in the DEFINE (resolution order above) and assign a confidence score from the matrix. Validate novel patterns via MCP before relying on them; at 0.70, research before designing.
 
+**Risk profile echo (contract obligation):** copy the DEFINE's risk profile
+`level` and `reasons` into the DESIGN metadata `Risk Level` row — an echo,
+never recomputed or dropped. A DEFINE without a profile (legacy) echoes
+`medium (effective — no profile in DEFINE)` per `risk_profiles.legacy`.
+
 ### Step 2: Create Architecture
 
 Design the solution:
@@ -221,6 +226,7 @@ Every item must pass before the phase is declared complete:
 ```text
 PRE-FLIGHT CHECK
 ├─ [ ] KB patterns loaded from DEFINE's domains
+├─ [ ] Risk Level echoed from the DEFINE (or effective medium for legacy)
 ├─ [ ] ASCII architecture diagram created and clear
 ├─ [ ] At least one decision with full rationale (inline ADR)
 ├─ [ ] Complete file manifest (all files listed)

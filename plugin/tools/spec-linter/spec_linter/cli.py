@@ -15,6 +15,15 @@ contract-declared severity — `report_contract.legacy.manual` or `.autopilot`
 — applies to a pre-contract (schema-version-less) report; the flag only
 names the consumer context, it never reinterprets a verdict.
 
+`--phase define` is similarly conditional: when the loaded contracts data
+carries a top-level `risk_profiles` mapping, it runs a `DefinePhaseContract`
+instead, layering WARN-only `RP.*` risk-profile rules on top of the phase's
+existing `L2.required_section` (FAIL) checks; malformed `risk_profiles`
+subkeys are an operational ERROR (exit 2), never a verdict. When
+`risk_profiles` is absent from the contracts data, `--phase define` falls
+back silently to the plain `SddPhaseContract` path — backward compatible
+with contracts files that predate the risk-profile rollout.
+
 Exit codes form a three-way contract:
 
 - 0 — PASS or WARN verdict.
@@ -38,6 +47,7 @@ import yaml
 from . import rules
 from .contracts.agent_spec import AgentSpecContract, emit_json_schema
 from .contracts.build_report import BuildReportContract
+from .contracts.define_phase import DefinePhaseContract
 from .contracts.sdd_phase import SddPhaseContract
 from .engine import lint
 from .protocol import Contract
@@ -194,12 +204,77 @@ def _build_report_contract(
     )
 
 
+def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> DefinePhaseContract:
+    """Assemble the define-phase contract from `define.required_sections` plus
+    the top-level `risk_profiles` block of already-loaded contracts data,
+    mirroring `_build_report_contract`'s validation style for every piece it
+    needs."""
+    required = _phase_required_sections("define", data, contracts_file)
+    block = data["risk_profiles"]
+
+    levels = block.get("levels")
+    if not isinstance(levels, list) or not all(isinstance(v, str) for v in levels):
+        raise _OperationalError(
+            f"risk_profiles.levels must be a list of strings in {contracts_file.name}"
+        )
+    dimensions = block.get("dimensions")
+    if not isinstance(dimensions, list) or not all(isinstance(v, str) for v in dimensions):
+        raise _OperationalError(
+            f"risk_profiles.dimensions must be a list of strings in {contracts_file.name}"
+        )
+    dimension_values = block.get("dimension_values")
+    if not isinstance(dimension_values, list) or not all(
+        isinstance(v, str) for v in dimension_values
+    ):
+        raise _OperationalError(
+            f"risk_profiles.dimension_values must be a list of strings in {contracts_file.name}"
+        )
+
+    override = block.get("override")
+    override_required = override.get("required_fields") if isinstance(override, dict) else None
+    if not isinstance(override_required, list) or not all(
+        isinstance(v, str) for v in override_required
+    ):
+        raise _OperationalError(
+            f"risk_profiles.override.required_fields must be a list of strings "
+            f"in {contracts_file.name}"
+        )
+
+    legacy = block.get("legacy")
+    legacy_level = legacy.get("effective_level") if isinstance(legacy, dict) else None
+    if not isinstance(legacy_level, str):
+        raise _OperationalError(
+            f"risk_profiles.legacy.effective_level must be a string in {contracts_file.name}"
+        )
+    if legacy_level not in levels:
+        raise _OperationalError(
+            f"risk_profiles.legacy.effective_level '{legacy_level}' is not one of "
+            f"risk_profiles.levels in {contracts_file.name}"
+        )
+    if [v for v in dimension_values if v in set(levels)] != levels:
+        raise _OperationalError(
+            "risk_profiles.levels must appear in risk_profiles.dimension_values in the "
+            f"same order (rank comparability) in {contracts_file.name}"
+        )
+
+    return DefinePhaseContract(
+        required_sections=required,
+        levels=levels,
+        dimensions=dimensions,
+        dimension_values=dimension_values,
+        override_required=override_required,
+        legacy_level=legacy_level,
+    )
+
+
 def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) -> Level:
     """Lint a Markdown phase document against its phase contract."""
     data = _load_contracts_data(contracts_file)
     contract: Contract
     if phase == "build":
         contract = _build_report_contract(data, contracts_file, legacy_mode)
+    elif phase == "define" and isinstance(data.get("risk_profiles"), dict):
+        contract = _define_phase_contract(data, contracts_file)
     else:
         required = _phase_required_sections(phase, data, contracts_file)
         contract = SddPhaseContract(phase, required)

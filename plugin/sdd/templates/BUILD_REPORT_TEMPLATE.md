@@ -14,6 +14,7 @@
 | **Status** | In Progress / Complete / Blocked |
 | **Schema Version** | 2 |
 | **TDD Mode** | {off / opt-in / required} |
+| **Risk Level** | {level echoed from the DEFINE Risk Profile / n/a (legacy DEFINE)} |
 
 ---
 

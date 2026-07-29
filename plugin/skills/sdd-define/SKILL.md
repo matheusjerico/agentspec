@@ -133,6 +133,28 @@ Trigger: the requirements mention data pipelines, ETL, analytics, warehouses, da
 
 Record the findings in the DEFINE document's "Data Contract (if applicable)" section — source inventory, schema contract, freshness SLAs, completeness metrics, lineage requirements. The section's shape lives in the template; do not invent a parallel format.
 
+### Step 5.5: Derive the Risk Profile
+
+Score the five dimensions (`data_loss`, `security`, `reversibility`,
+`blast_radius`, `migration`) on the `none/low/medium/high/critical` scale, then
+derive the level deterministically:
+
+```text
+level = max(dimension values), raised to any applicable elevation floor
+```
+
+The vocabularies, elevation rules (`{trigger, floor}` — e.g. auth/authz change
+→ ≥ high; destructive migration → critical), override requirements, and legacy
+default are contract data: `WORKFLOW_CONTRACTS.yaml` → `risk_profiles`. Record
+the result in the document's Risk Profile section (shape owned by the
+template), with `reasons` citing the dimension or rule that set the level.
+
+- **Overrides** require `author` + `rationale` and never remove the CRITICAL
+  halt (`risk_profiles.override.invariant`).
+- **Rollout is Observe/Warn:** `spec-lint --phase define` reports profile gaps
+  as WARN-only `RP.*` findings; a DEFINE without a profile is treated as
+  effective `medium` with a visible WARN — never a silent `low`.
+
 ### Step 6: Calculate Clarity Score
 
 Score each element 0-3 points:
@@ -207,6 +229,7 @@ PRE-FLIGHT CHECK
 ├─ [ ] Acceptance tests are testable
 ├─ [ ] Out of scope is explicit (not empty)
 ├─ [ ] Assumptions documented with impact if wrong
+├─ [ ] Risk profile derived (level, dimensions, reasons; override justified if applied)
 ├─ [ ] KB domains identified for Design phase
 ├─ [ ] Technical context gathered (location, IaC impact)
 └─ [ ] Clarity score >= 12/15
