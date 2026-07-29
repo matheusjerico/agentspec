@@ -27,6 +27,10 @@
 | L | design | 1 | spec-lint exit 0 with WARN TX.orphan_reference — REAL matrix gap (REQ-007 missing); fixed, re-lint | REFINE (budget 1/1) | 2026-07-29T19:46Z | - | - |
 | L | design | 2 | spec-lint --phase design exit 0, zero findings | PASS | 2026-07-29T19:47Z | - | - |
 | J | design | 1 | spec-judge exit 3 (daily budget) | SKIP:exit3 | 2026-07-29T19:47Z | - | - |
+| B | build | 1 | 5/5 v2-manifest tasks; suites 172 linter + 150 root; build+parity exit 0 (infra-outage pause before review, resumed) | PASS | 2026-07-29T22:40Z | - | - |
+| R | build | 1 | Review Verdict clean (1 Important stale-sentence contradiction + 2 Minor, fixed in 1/2 rounds) | PASS | 2026-07-29T22:42Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 — clean PASS (low risk: TDD policy silent both ways) | PASS | 2026-07-29T22:43Z | - | - |
+| S | ship | 1 | pre-ship checklist 6/6 | PASS | 2026-07-29T22:48Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -39,9 +43,9 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_COMMIT_PARALLEL_POLICY.md | 36c3016 — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_COMMIT_PARALLEL_POLICY.md | pending | L: REFINE→PASS (live TX catch!) · J: SKIP:exit3 · D: 0 pauses |
-| Build | pending | - | - |
-| Ship | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_COMMIT_PARALLEL_POLICY.md | b9a80dc — design complete | L: REFINE→PASS (live TX catch!) · J: SKIP:exit3 · D: 0 pauses |
+| Build | .claude/sdd/reports/BUILD_REPORT_COMMIT_PARALLEL_POLICY.md | pending | B: 5/5 (v2) · R: clean (1/2) · L: clean PASS |
+| Ship | .claude/sdd/archive/COMMIT_PARALLEL_POLICY/ | pending | S: 6/6 checklist |
 | PR | pending | - | - |
 
 ---

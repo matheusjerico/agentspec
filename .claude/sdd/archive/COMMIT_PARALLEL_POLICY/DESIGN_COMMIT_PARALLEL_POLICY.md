@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_COMMIT_PARALLEL_POLICY.md](./DEFINE_COMMIT_PARALLEL_POLICY.md) |
 | **Risk Level** | low (echo from DEFINE — conduct + data + one column; no gate semantics change) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 | **Design Confidence** | 0.92 — pure conduct/data increment on stable surfaces |
 
 ---
@@ -305,4 +305,4 @@ Not applicable.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_COMMIT_PARALLEL_POLICY.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_COMMIT_PARALLEL_POLICY.md`

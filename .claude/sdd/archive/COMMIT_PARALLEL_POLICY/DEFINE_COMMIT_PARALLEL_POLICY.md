@@ -9,7 +9,7 @@
 | **Feature** | COMMIT_PARALLEL_POLICY |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** plan §13 (commits §13.1, parallelism §13.2, acceptance §13.3), §18 PR 7 ("after the task graph is stable" — it is: Increments 3/5/6 shipped ids, write-sets, reviews, coverage). Phase 0 carried by the ratified plan. Mostly conduct + contract data; the graph-integrity sensors this policy relies on already exist (TM.write_conflict, TM.cycle).
@@ -204,4 +204,4 @@ None blocking — ready for Design.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_COMMIT_PARALLEL_POLICY.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_COMMIT_PARALLEL_POLICY.md`

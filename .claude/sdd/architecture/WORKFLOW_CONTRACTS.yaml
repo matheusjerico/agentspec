@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.13.0
+# Version: 3.14.0
 # Date: 2026-07-29
 
-version: "3.13.0"
+version: "3.14.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -543,6 +543,29 @@ traceability:
     build_matrix_missing_high_critical: WARN   # adoption ramp — new artifact this increment
     build_matrix_missing_medium_low: silent
 
+# Commit & parallelism policy (Increment 7). Pure conduct + data: sdd-build
+# owns the per-task commit step (Step 4.9) and the parallel dispatch policy;
+# the graph sensors that make parallelism safe (TM.write_conflict, TM.cycle)
+# already run at Design. No linter rules bind on this block.
+commit_parallel:
+  commit_rules:
+    - "one commit per task, message from the manifest's execution.commit (Conventional Commits)"
+    - "never mix independent tasks in one commit"
+    - "never commit failing tests — except an explicitly marked RED commit"
+    - "never rewrite history without explicit authorization"
+    - "squash/rebase on merge is the maintainer's decision, not the build's"
+  commit_recording:
+    vocabulary: [sha, unavailable, session]
+    unavailable: "no Git in the environment — recorded, never a blocker"
+    session: "v1 builds or impractical granularity — justification in the task row's Notes"
+  parallel_preconditions:
+    - "all dependencies complete"
+    - "write-sets disjoint (validated at Design: TM.write_conflict)"
+    - "no shared migration or contract artifact in dispute"
+    - "agent budget allows concurrent dispatch"
+    - "merge strategy defined for the group"
+  on_conflict: "serialize the remainder of the group — never an automatic risky merge"
+
 
 # =============================================================================
 # PHASE 2: DESIGN
@@ -992,6 +1015,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.14.0"
+    date: "2026-07-29"
+    changes:
+      - "COMMIT_PARALLEL_POLICY (Increment 7): new top-level commit_parallel block — 5 commit rules as data (per-task Conventional Commit from execution.commit, never mix tasks, never commit failing tests except marked RED commits, no history rewrites without authorization, squash/rebase is the maintainer's), commit_recording vocabulary (sha/unavailable/session — Git absence never blocks), 5 parallel preconditions (§13.2) with serialize-on-conflict. sdd-build gains Step 4.9 (per-task commit, SHA into the report's new Commit column) and the parallel dispatch policy activating Increment-3's parallel_group data; sdd-autopilot notes task-commit/checkpoint composition and budget respect. Zero linter changes — the graph sensors already run at Design."
+
   - version: "3.13.0"
     date: "2026-07-29"
     changes:

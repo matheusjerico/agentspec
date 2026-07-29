@@ -33,12 +33,12 @@
 
 ## Task Execution with Agent Attribution
 
-| # | Task ID | Task | Agent | Status | Duration | Notes |
-|---|---------|------|-------|--------|----------|-------|
-| 1 | {TASK-AREA-001 / - (v1)} | {Task description} | @{agent-name} | ✅ Complete | {Xm} | {Any notes} |
-| 2 | {TASK-AREA-002 / -} | {Task description} | @{agent-name} | ✅ Complete | {Xm} | {Any notes} |
-| 3 | {TASK-AREA-003 / -} | {Task description} | (direct) | 🔄 In Progress | - | {No specialist matched} |
-| 4 | {TASK-AREA-004 / -} | {Task description} | @{agent-name} | ⏳ Pending | - | - |
+| # | Task ID | Task | Agent | Status | Commit | Duration | Notes |
+|---|---------|------|-------|--------|--------|----------|-------|
+| 1 | {TASK-AREA-001 / - (v1)} | {Task description} | @{agent-name} | ✅ Complete | {short sha / unavailable / session} | {Xm} | {Any notes} |
+| 2 | {TASK-AREA-002 / -} | {Task description} | @{agent-name} | ✅ Complete | {sha} | {Xm} | {Any notes} |
+| 3 | {TASK-AREA-003 / -} | {Task description} | (direct) | 🔄 In Progress | - | - | {No specialist matched} |
+| 4 | {TASK-AREA-004 / -} | {Task description} | @{agent-name} | ⏳ Pending | - | - | - |
 
 **Manifest:** {v2 — tasks consumed from the DESIGN Task Manifest / v1 — tasks inferred from the file manifest (manifest_version: 1)}
 

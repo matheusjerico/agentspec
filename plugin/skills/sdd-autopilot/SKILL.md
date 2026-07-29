@@ -49,7 +49,11 @@ The headless runner rejects anything that is not an existing `DEFINE_{FEATURE}.m
               checkpoint commit "auto({FEATURE}): design complete".
 5. BUILD      Load sdd-build; execute under its own decide-never-ask policy
               (delegation, per-file retry_limit 3, Step 5.5 whole-branch
-              review). Gate L on the BUILD_REPORT (--phase build
+              review). Per-task commits (Step 4.9, commit_parallel) compose
+              with this phase's checkpoint commit — task commits land during
+              the build, the checkpoint closes the phase; parallel dispatch
+              of validated parallel_group tasks respects the run's agent
+              budget. Gate L on the BUILD_REPORT (--phase build
               --legacy-mode fail). Then Gate R (review verdict), then Gate B.
               Checkpoint commit.
 6. SHIP       Load sdd-ship. Gate S (pre-ship checklist). Archive. Final commit.
