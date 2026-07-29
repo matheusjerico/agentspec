@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_WORKFLOW_METRICS.md](../features/DEFINE_WORKFLOW_METRICS.md) |
 | **DESIGN** | [DESIGN_WORKFLOW_METRICS.md](../features/DESIGN_WORKFLOW_METRICS.md) |
-| **Status** | Complete |
+| **Status** | Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | required |
 | **Risk Level** | medium (echo from DEFINE) |

@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_WORKFLOW_METRICS.md](DEFINE_WORKFLOW_METRICS.md) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | Shipped |
 | **Risk Level** | medium (echo from DEFINE) |
 
 ---

@@ -31,6 +31,7 @@
 | R | build | 3 | fix round 2 verified: closing verdict clean-with-minors (fails-safe trade-off disclosed) | PASS | 2026-07-30T01:00Z | - | - |
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0, zero findings (TDD required; BR.metrics_* validated the first real block) | PASS | 2026-07-30T01:05Z | - | - |
 | B | build | 1 | BUILD_REPORT complete; suites 172 root + 193 spec-linter; plugin build + parity exit 0 | PASS | 2026-07-30T01:05Z | - | - |
+| S | ship | 1 | pre-ship checklist: report Complete, verdict clean-with-minors, 365/365 green, statuses Shipped; PR_READY generated (13/13 ✅, Gaps: None); SHIPPED carries the first Workflow Metrics summary | PASS | 2026-07-30T01:20Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -44,8 +45,8 @@
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_WORKFLOW_METRICS.md | d425d03 — ignition | I: re-score 15/15 |
 | Design | .claude/sdd/features/DESIGN_WORKFLOW_METRICS.md | 002d9a1 — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
-| Build | .claude/sdd/reports/BUILD_REPORT_WORKFLOW_METRICS.md | pending (this commit) | R: clean-with-minors (2/2 rounds) · L: PASS · B: PASS |
-| Ship | pending | - | - |
+| Build | .claude/sdd/archive/WORKFLOW_METRICS/BUILD_REPORT_WORKFLOW_METRICS.md | 13cbf7f — build complete | R: clean-with-minors (2/2 rounds) · L: PASS · B: PASS |
+| Ship | .claude/sdd/archive/WORKFLOW_METRICS/SHIPPED_2026-07-29.md | pending (this commit) | S: PASS · PR_READY generated |
 | PR | pending | - | - |
 
 ---

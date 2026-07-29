@@ -9,7 +9,7 @@
 | **Feature** | WORKFLOW_METRICS |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Built) |
+| **Status** | Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** plan §15 (metrics catalog §15.1, schema §15.2, usage §15.3, acceptance §15.4), §16.1/§16.2 test layers, §18 PR 9 ("no premature adaptive automation"). Phase 0 carried by the ratified plan. Consumes: fix rounds + verdicts (Inc 1/5), risk overrides (Inc 2), task manifest + parallelism (Inc 3/7), TDD evidence (Inc 4), findings by stage (Inc 5), coverage matrix (Inc 6), operational skips (run ledger).
