@@ -24,6 +24,8 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T20:15Z | - | - |
+| L | design | 1 | spec-lint --phase design exit 0 (TM + TX live on manifest and matrix) | PASS | 2026-07-29T20:22Z | - | - |
+| J | design | 1 | spec-judge exit 3 (daily budget) | SKIP:exit3 | 2026-07-29T20:22Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +37,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_PR_READINESS.md | pending | I: re-score 15/15 |
-| Design | pending | - | - |
+| Ignition | .claude/sdd/features/DEFINE_PR_READINESS.md | 5528617 — ignition | I: re-score 15/15 |
+| Design | .claude/sdd/features/DESIGN_PR_READINESS.md | pending | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
 | Build | pending | - | - |
 | Ship | pending | - | - |
 | PR | pending | - | - |
