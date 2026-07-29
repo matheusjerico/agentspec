@@ -79,9 +79,9 @@ when the DESIGN carries a `Task Manifest (v2)` section (`task_manifest` YAML,
 The graph was validated at Design (`spec-lint --phase design`, TM.* rules);
 execute tasks in topological order of `depends_on`, honor each task's
 `owner`/`verification` commands, and record its `id` in the BUILD_REPORT
-Task Execution table (the Task ID column). Dispatch remains sequential this
-increment — `parallel_group` is declared data until the scheduling increment
-lands.
+Task Execution table (the Task ID column). Dispatch honors `parallel_group`
+under Step 4.9's `commit_parallel` preconditions — sequential execution
+remains the default whenever any precondition is unmet.
 
 **v1 fallback (no manifest):** convert the file manifest to a task list
 on-the-fly, exactly as before, and record `manifest_version: 1` in the report
@@ -166,6 +166,28 @@ After a task's verification passes, review it BEFORE its dependents start
   task reviews feed it, never replace it; the final pass re-evaluates
   integration, not just the sum of local verdicts.
 
+### Step 4.9: Commit the Task (`commit_parallel` contract)
+
+After the task's verification and its Step 4.6 review resolve, commit exactly
+THIS task's files with its manifest `execution.commit` message (Conventional
+Commits) and record the short SHA in the Task Execution table's Commit
+column. Rules (`commit_parallel.commit_rules`): never mix independent tasks
+in one commit; never commit failing tests — a RED commit must be explicitly
+marked; never rewrite history without authorization; squash/rebase at merge
+is the maintainer's decision. No Git in the environment → record
+`unavailable`, never a blocker; v1 builds or impractical granularity →
+`session` with a justification in Notes.
+
+**Parallel dispatch (activates the manifest's `parallel_group`):**
+same-group tasks whose dependencies are complete MAY be dispatched
+concurrently — their write-sets were validated disjoint at Design
+(TM.write_conflict). All five `commit_parallel.parallel_preconditions` must
+hold (dependencies complete; disjoint write-sets; no shared migration or
+contract artifact in dispute; agent budget allows; merge strategy defined).
+Any runtime conflict or precondition failure serializes the remainder of the
+group (`on_conflict`) — never an automatic risky merge; record the
+serialization in Autonomous Decisions.
+
 ### Step 5: Run Full Validation
 
 After all files are created:
@@ -245,6 +267,10 @@ RED excerpt and the GREEN summary per task in `## TDD Evidence`.
 **RED validity (`tdd_policy.red_validity`):** a broken RED command, an
 unrelated import error, or a pre-existing failure is NOT RED evidence — the
 observed failure must correspond to the missing behavior the task delivers.
+A committed RED state uses the explicit grammar
+`test(red): <task-id> — expected failure, not yet fixed` — the marked-RED
+form `commit_parallel.commit_rules` sanctions; unmarked failing-test commits
+stay forbidden.
 
 **Exceptions:** non-code or untestable tasks use the sanctioned grammar
 `n/a — exception: <category>; verified by: <command>`, with categories from
