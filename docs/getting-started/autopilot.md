@@ -202,7 +202,8 @@ Neither is required to run. When a sensor is missing or errors operationally, th
 | **J — Judge** | `spec-judge` exit code, standard tier (runs only after a Gate L PASS) | 1 refinement per document (WARN only) | none reachable — standard tier is WARN-capped by design |
 | **D — Decision** | Design's own per-decision confidence (sdd-design confidence matrix) | un-capped in interactive mode (the human is the budget); 0 in headless | headless only: confidence < 0.80 → abort with a structured Pending Decision block, resumed 1:1 by an interactive `/auto FEATURE_NAME` |
 | **B — Build** | Per-file verification + BUILD_REPORT completeness | 3 retries per file | incomplete report after retries → abort with failed tasks listed |
-| **S — Ship** | Pre-ship checklist (4 items) | none | any unmet item → abort with the item named |
+| **R — Review** | BUILD_REPORT Review Verdict from sdd-build Step 5.5 (whole-branch `code-reviewer` dispatch) | 2 fix-loop rounds per build | open Critical/Important findings after budget — or verdict `missing` — abort with the findings in a gap report |
+| **S — Ship** | Pre-ship checklist (5 items) | none | any unmet item → abort with the item named |
 | **PR** | `/create-pr` outcome | none | failure → **Partial Success** (not an abort) with the manual command in the report |
 
 Interactive mode never aborts at Gate D — a sub-0.80 decision is asked instead. Sensor unavailable (lint/judge CLI absent, or an operational exit code) is always a visible skip in the ledger, never a silent pass — see Requirements and Degradation above.

@@ -52,8 +52,18 @@ def test_build_skill_defines_step_5_5_and_tdd_mode():
     assert "--tdd" in text
 
 
-def test_ship_skill_checks_review_verdict():
-    assert "review verdict" in SHIP_SKILL.read_text().lower()
+def test_ship_skill_refuses_dirty_and_missing_verdicts():
+    text = SHIP_SKILL.read_text()
+    assert "Review Verdict is `dirty` or `missing`" in text
+    assert "Review Verdict dirty or missing | 0.50 | Cannot ship" in text
+    assert "Review Verdict is clean or clean-with-minors" in text
+
+
+def test_fix_loop_budget_consistent_across_files():
+    budget = contracts()["build"]["execution"]["final_review"]["fix_loop_budget"]
+    assert f"budget {budget} rounds" in BUILD_SKILL.read_text()
+    assert f"{budget} rounds per build" in AUTOPILOT_SKILL.read_text()
+    assert f"{{0-{budget}}}/{budget}" in REPORT_TEMPLATE.read_text()
 
 
 def test_autopilot_has_gate_r():

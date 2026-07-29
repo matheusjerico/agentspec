@@ -239,6 +239,7 @@ ambiguity (DESIGN fully pre-decided everything).
 - [ ] All verification checks pass
 - [ ] All tests pass
 - [ ] No blocking issues
+- [ ] Review Verdict is clean or clean-with-minors
 - [ ] Acceptance tests verified
 - [ ] Ready for /ship
 

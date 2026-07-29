@@ -59,6 +59,10 @@ Resolve completeness in this order before anything is archived:
 | All present | Fail | Any | 0.50 | Cannot ship |
 | Missing | Any | Any | 0.30 | Cannot ship |
 
+**Review Verdict is an independent gating dimension:** `dirty` or `missing` →
+Cannot ship regardless of the other columns — the verdict row above is the
+canonical example, not an exhaustive enumeration of column combinations.
+
 ### When NOT to ship
 
 Any of these blocks the ship — stop and route back to `/build`:

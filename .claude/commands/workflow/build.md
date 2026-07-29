@@ -57,6 +57,7 @@ methodology for Steps 1-6; Step 7 is command-only.
 3. **Order by Dependencies** — determine execution order
 4. **Execute Each Task** — write or delegate, verify, retry (max 3)
 5. **Run Full Validation** — lint, types, tests across the codebase
+5.5. **Whole-Branch Review** — mandatory adversarial review (sdd-build Step 5.5): `code-reviewer` on the branch diff, fix loop ≤2 rounds, Review Verdict recorded in the report
 6. **Generate Build Report** — write BUILD_REPORT and update upstream statuses
 
 ### Step 7: Optional Judge Pass (`--judge`)

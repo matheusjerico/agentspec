@@ -118,6 +118,9 @@ For each file, in order:
 └─────────────────────────────────────────────────────┘
 ```
 
+Under `--tdd`, every code-bearing task runs its RED-GREEN cycle first — see
+`--tdd mode` (after Step 5.5) — then this loop's verification.
+
 Code standards for every file: no inline comments, type hints required,
 self-documenting names, config in YAML over hardcoded values. Verify
 incrementally — after each file, not only at the end. Fix forward: if something
@@ -144,6 +147,9 @@ After full validation passes, dispatch the review — never skip it, never
 self-review instead:
 
 1. Compute the branch scope: `BASE=$(git merge-base <default-branch> HEAD)`.
+   If no merge-base is computable (no default branch, detached or unrelated
+   history), fall back to reviewing every manifest file in full instead of
+   a diff.
 2. Dispatch `code-reviewer` via the Task tool with: the `BASE..HEAD` diff,
    the DEFINE's acceptance tests as the review lens, and the severity
    taxonomy Critical / Important / Minor.
@@ -166,13 +172,17 @@ Gate R (sdd-autopilot) maps this to abort-with-gap-report.
 with a visible WARN — never an assumed `clean`. A `missing` verdict blocks
 ship exactly like `dirty`.
 
+**Build halted before the review:** a build that stops on a blocker before
+Step 5.5 still writes the `## Review Verdict` section, verdict `missing`
+(review not attempted) — the section is never omitted from a BUILD_REPORT.
+
 ### `--tdd` mode (opt-in flag on /build)
 
 When invoked with `--tdd`, each code-bearing task follows RED-GREEN before
 the standard per-file verification: write the failing test → run it and
 observe the expected failure → write minimal code → run to green. Capture
-the observed RED excerpt per task in the BUILD_REPORT `## TDD Evidence`
-section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
+the observed RED excerpt and the GREEN run summary per task in the
+BUILD_REPORT `## TDD Evidence` section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
 artifact)`. Without the flag, task execution is unchanged.
 
 ### Step 6: Generate the Build Report
