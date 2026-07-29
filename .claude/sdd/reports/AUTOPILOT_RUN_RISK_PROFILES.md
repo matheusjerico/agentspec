@@ -24,6 +24,8 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T16:33Z | - | - |
+| L | design | 1 | spec-lint --phase design exit 0 | PASS | 2026-07-29T16:40Z | - | - |
+| J | design | 1 | spec-judge exit 3 (daily evaluation budget exhausted: 12/10 calls) | SKIP:exit3 | 2026-07-29T16:41Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +37,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_RISK_PROFILES.md | pending | I: re-score 15/15 |
-| Design | pending | - | - |
+| Ignition | .claude/sdd/features/DEFINE_RISK_PROFILES.md | 4f5cdcf — "auto(RISK_PROFILES): ignition" | I: re-score 15/15 |
+| Design | .claude/sdd/features/DESIGN_RISK_PROFILES.md | pending | L: PASS · J: SKIP:exit3 (budget) · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
 | Build | pending | - | - |
 | Ship | pending | - | - |
 | PR | pending | - | - |
@@ -50,6 +52,10 @@
 | # | Phase | Decision Point | Chose | Confidence | Rationale |
 |---|-------|----------------|-------|------------|-----------|
 | 1 | interview | Phase 0 conduct for a plan-sourced intent | Treated the ratified plan (§2–§4 evidence, §21 YAGNI) as the Phase 0 artifact; no separate BRAINSTORM | 0.95 | The plan is the maintainer-validated exploration; re-interviewing already-decided approaches adds noise, not clarity |
+| 2 | design | Where define-phase WARN rules live (A-001) | New `DefinePhaseContract`, CLI-routed with fallback | 0.90 | Mirrors Increment 1's BuildReportContract precedent; keeps the generic contract untouched |
+| 3 | design | Profile representation in the DEFINE | Fenced YAML block inside `## Risk Profile` | 0.85 | Matches the plan §8.1 model verbatim; deterministic fence+safe_load parse |
+| 4 | design | Elevation-rule semantics | `{trigger, floor}` data; skill applies floors, linter checks the max rule | 0.90 | Keeps the deterministic core machine-verified; trigger applicability auditable via reasons |
+| 5 | design | Severity ceiling this increment | All `RP.*` findings WARN; required_sections untouched | 0.95 | Plan §17.2/§18: Observe/Warn — only the pre-existing CRITICAL halt stays fail-closed |
 
 ---
 
