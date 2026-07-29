@@ -29,6 +29,7 @@
 | B | build | 1 | 9/9 manifest tasks (first v2-consumed build); suites 112 linter + 110 root; build+parity exit 0 | PASS | 2026-07-29T18:30Z | - | - |
 | R | build | 1 | Review Verdict clean (1 Critical + 2 Important + 5 Minor + round-2 N1, all fixed in 2/2 rounds) | PASS | 2026-07-29T18:32Z | - | - |
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (warn-mode also 0) | PASS | 2026-07-29T18:33Z | - | - |
+| S | ship | 1 | pre-ship checklist 6/6 (contract-gate re-run fail-mode exit 0; dogfood manifest re-lint exit 0) | PASS | 2026-07-29T18:45Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -42,8 +43,8 @@
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_TASK_MANIFEST.md | 7d38ad8 — "auto(TASK_MANIFEST): ignition" | I: re-score 15/15 |
 | Design | .claude/sdd/features/DESIGN_TASK_MANIFEST.md | 1f7e1f2 — "auto(TASK_MANIFEST): design complete" | L: PASS · J: SKIP:exit3 (budget) · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
-| Build | .claude/sdd/reports/BUILD_REPORT_TASK_MANIFEST.md | pending | B: 9/9 (v2) · R: clean (2/2 rounds) · L: PASS (fail-mode) |
-| Ship | pending | - | - |
+| Build | .claude/sdd/reports/BUILD_REPORT_TASK_MANIFEST.md | f189507 — "auto(TASK_MANIFEST): build complete" | B: 9/9 (v2) · R: clean (2/2 rounds) · L: PASS (fail-mode) |
+| Ship | .claude/sdd/archive/TASK_MANIFEST/ | pending | S: 6/6 checklist |
 | PR | pending | - | - |
 
 ---

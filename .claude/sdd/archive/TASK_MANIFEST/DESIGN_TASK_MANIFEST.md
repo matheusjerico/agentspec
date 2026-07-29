@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_TASK_MANIFEST.md](./DEFINE_TASK_MANIFEST.md) |
 | **Risk Level** | medium (echo from DEFINE — blast_radius medium: design-lint path + two skills; no elevation floor) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | ✅ Shipped |
 | **Design Confidence** | 0.90 — third phase-contract of the established pattern; KB `python`/`testing` |
 
 ---
@@ -430,6 +430,7 @@ Not applicable.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-07-29 | design-agent (autopilot) | Initial version — 4 [ASSUMED] decisions (≥ 0.85), 11-file manifest, dogfood v2 task manifest |
+| 1.1 | 2026-07-29 | ship-agent | Shipped and archived |
 
 ---
 

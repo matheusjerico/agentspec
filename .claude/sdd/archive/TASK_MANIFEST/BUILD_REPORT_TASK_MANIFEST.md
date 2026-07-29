@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_TASK_MANIFEST.md](../features/DEFINE_TASK_MANIFEST.md) |
 | **DESIGN** | [DESIGN_TASK_MANIFEST.md](../features/DESIGN_TASK_MANIFEST.md) |
-| **Status** | Complete |
+| **Status** | ✅ Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | off |
 | **Risk Level** | medium (echo from DEFINE — blast_radius medium; no elevation floor) |
