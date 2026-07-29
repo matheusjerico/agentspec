@@ -41,6 +41,20 @@
 | **Build Iterations** | {N} |
 | **Design Decisions** | {N} |
 
+### Workflow Metrics (summary of the report's workflow_metrics block)
+
+> Summarized from BUILD_REPORT → Workflow Metrics (schema v1). Unmeasured
+> entries are reported as `unmeasured — {reason}`, never backfilled here.
+
+| Metric | Value |
+|--------|-------|
+| **Phase durations (s)** | {build: N, ... — or unmeasured — reason} |
+| **Fix rounds (local / final)** | {n} / {n} |
+| **Findings (C/I/M)** | {n}/{n}/{n} ({task_review}/{branch_review} by stage) |
+| **Requirements (MUST verified / total, excepted)** | {n}/{n}, {n} |
+| **Tests by type** | {unit/contract/documental/integration counts} |
+| **Operational skips** | {list, or none} |
+
 ---
 
 ## What Was Built

@@ -225,6 +225,33 @@ ambiguity (DESIGN fully pre-decided everything).
 
 ---
 
+## Workflow Metrics
+
+> Machine-readable run metrics (`WORKFLOW_CONTRACTS.yaml` → `workflow_metrics`,
+> schema v1). Values are MEASURED or `{value: null, reason: "..."}` — never
+> estimated, interpolated, or copied from a prior run. Ship summarizes this
+> block into SHIPPED; it never auto-changes any policy.
+
+```yaml
+workflow_metrics:
+  schema_version: 1
+  feature: "{FEATURE_NAME}"
+  phase_duration_seconds: { build: 0 }
+  time_to_first_green_seconds: { value: null, reason: "{why not measured}" }
+  task_count: 0
+  effective_parallelism: 1
+  tests_by_type: { unit: 0, contract: 0, documental: 0, integration: 0 }
+  reopened_tasks: 0
+  fix_rounds: { local: 0, final: 0 }
+  findings: { critical: 0, important: 0, minor: 0, by_stage: { task_review: 0, branch_review: 0 } }
+  requirements: { must_total: 0, must_verified: 0, excepted: 0 }
+  operational_skips: []
+  risk_overrides: 0
+  tokens_cost: { value: null, reason: "{why not measured}" }
+```
+
+---
+
 ## Data Quality Results (if applicable)
 
 > Include this section when the build involves data pipelines, dbt models, or data infrastructure.

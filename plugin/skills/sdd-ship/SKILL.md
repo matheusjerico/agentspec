@@ -250,6 +250,21 @@ readiness (status `⚠ Gaps`) — non-destructive, always. `/create-pr` consumes
 the artifact and revalidates the mutable rows immediately before publication;
 delete the artifact once the PR URL exists.
 
+## Summarize workflow metrics (into SHIPPED)
+
+The report's `workflow_metrics` block (schema v1, validated by the build
+contract gate — an incomplete report never reaches ship) is summarized into
+the SHIPPED document's **Workflow Metrics subsection of `## Metrics`**
+(`SHIPPED_TEMPLATE.md` owns the table shape — no improvised sections),
+feeding the lessons learned. Consume `null` values as-is — a
+`{value: null, reason}` entry is reported as `unmeasured — {reason}`,
+never backfilled at ship time.
+
+**Boundary (§15.3):** metrics NEVER auto-change policies. No risk
+recalibration, no budget adjustment, no gate tuning happens because a metric
+moved — that requires multiple comparable runs AND human review, outside any
+single ship. Ship reports numbers; humans change policy.
+
 ## Close the cycle — end-of-cycle handoff
 
 When the archive is complete, report closure to the user:

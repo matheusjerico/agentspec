@@ -49,12 +49,36 @@ grammar (Increment 4 precedent) — recorded, auditable, exempt.
 Risk Level (the same token `BR.tdd_required_by_risk`/`BR.task_review_missing`
 read) — the adoption ramp for this new artifact; medium/low/an unrecognized
 token/a missing Risk Level row all stay silent.
+
+A fifth opt-in set — sourced from the top-level `workflow_metrics` block
+(Increment 9) — arms via the constructor's `metrics_config` (`None` default
+disables all five): the report's `## Workflow Metrics` fenced-yaml block
+(`_section_exact`-scoped) must exist (`BR.metrics_missing`, at the
+caller-supplied legacy level — the mid-migration adoption path), parse to a
+mapping rooted at `workflow_metrics` (`BR.metrics_parseable`, FAIL), declare
+the contract's exact `schema_version` (`BR.metrics_schema_version`, FAIL),
+carry every catalog key and nothing outside it (`BR.metrics_key_shape`,
+FAIL — a typo'd key must not silently fork the schema), and hold only
+measured values or the CLOSED availability mapping `{value: null, reason:
+<why>}` (`BR.metrics_fabricated`, FAIL): a bare null, a missing/empty
+reason, an extra key riding the availability mapping, an unfilled
+`{placeholder}` string anywhere (the template copied verbatim — the same
+brace guard the matrix/overall parsers use), or an estimate marker
+(`~`-prefix / `approx` / `estimat…`) in a measured string all block. The
+reason-prose marker exemption is shape-aware — it applies only to the
+`reason` of a genuine availability mapping, never to arbitrary
+`*reason`-named keys. Disclosed trade-off (shared with the matrix/overall
+brace guards): a legitimate string containing a literal `{...}` pair is
+rejected as a placeholder — fails safe; keep literal braces out of measured
+strings and reasons.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+import yaml
 
 from ..verdict import Finding, Level
 
@@ -85,6 +109,12 @@ _TDD_EXCEPTION = re.compile(
     r"(?:^|\|)\s*(?:n/?a\s*[—–-]\s*)?exception:\s*([a-z0-9_]+)",
     re.IGNORECASE | re.MULTILINE,
 )
+# Same fence grammar as the design-side task-manifest parser: the block is
+# the first ```yaml fence inside the exact-slug section.
+_YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
+# Estimate markers in MEASURED string values (never in `reason` prose):
+# a leading `~`, or any `approx`/`estimate(d)`/`estimation` token.
+_ESTIMATE_MARKER = re.compile(r"^\s*~|approx|estimat", re.IGNORECASE)
 
 
 def _slug(text: str) -> str:
@@ -168,6 +198,10 @@ class _ParsedBuildReport:
     task_reviews_section_present: bool
     matrix_rows: list[_MatrixRow]
     matrix_present: bool
+    metrics_fence_present: bool
+    # Fence present + block None == the fence failed to parse to a mapping
+    # rooted at workflow_metrics — no separate "broken" flag needed.
+    metrics_block: dict | None
 
 
 class BuildReportContract:
@@ -183,6 +217,7 @@ class BuildReportContract:
         tdd_exception_categories: list[str] | None = None,
         task_review_verdicts: list[str] | None = None,
         matrix_must_coverage: bool = False,
+        metrics_config: dict | None = None,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -199,6 +234,10 @@ class BuildReportContract:
         # off — backward compatible with contracts files that predate
         # Increment 6.
         self._matrix_must_coverage = matrix_must_coverage
+        # Opt-in the same way, from the top-level `workflow_metrics` block:
+        # {"schema_version": int, "catalog": list[str]} arms the five
+        # BR.metrics_* rules; `None` (default) leaves them all off.
+        self._metrics_config = metrics_config
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
@@ -253,6 +292,22 @@ class BuildReportContract:
         matrix_present = matrix_section is not None
         matrix_rows = _parse_matrix_rows(matrix_section) if matrix_section is not None else []
 
+        # First fence in the exact-slug section decides (the task-manifest
+        # precedent); a workflow_metrics fence under any OTHER heading is
+        # invisible here — the section is the contract's address.
+        metrics_section = _section_exact(artifact, "workflow_metrics")
+        metrics_fence = _YAML_FENCE.search(metrics_section) if metrics_section is not None else None
+        metrics_fence_present = metrics_fence is not None
+        metrics_block: dict | None = None
+        if metrics_fence is not None:
+            try:
+                document = yaml.safe_load(metrics_fence.group(1))
+            except yaml.YAMLError:
+                document = None
+            root = document.get("workflow_metrics") if isinstance(document, dict) else None
+            if isinstance(root, dict):
+                metrics_block = root
+
         return _ParsedBuildReport(
             headings=headings,
             metadata=metadata,
@@ -266,6 +321,8 @@ class BuildReportContract:
             task_reviews_section_present=task_reviews_section_present,
             matrix_rows=matrix_rows,
             matrix_present=matrix_present,
+            metrics_fence_present=metrics_fence_present,
+            metrics_block=metrics_block,
         )
 
     @staticmethod
@@ -306,6 +363,8 @@ class BuildReportContract:
         if self._matrix_must_coverage:
             findings.extend(self._check_matrix_must_uncovered(parsed))
             findings.extend(self._check_matrix_missing(parsed))
+        if self._metrics_config is not None:
+            findings.extend(self._check_metrics(parsed))
         return findings
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
@@ -714,6 +773,165 @@ class BuildReportContract:
                 found="absent",
             )
         ]
+
+    def _check_metrics(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """The five `BR.metrics_*` rules (module docstring, Increment 9).
+        Precedence mirrors the block's failure ladder: absent → missing;
+        present-but-unparseable → parseable; parsed → version, key shape,
+        and the fabrication walk all report independently."""
+        if not parsed.metrics_fence_present:
+            return [
+                Finding(
+                    level=self._legacy_level,
+                    rule="BR.metrics_missing",
+                    field="Workflow Metrics",
+                    message=(
+                        "workflow_metrics is configured but the report has no "
+                        "'## Workflow Metrics' fenced yaml block — emit it per "
+                        "BUILD_REPORT_TEMPLATE.md (adoption path for reports "
+                        "predating Increment 9)"
+                    ),
+                    expected="## Workflow Metrics section with a ```yaml workflow_metrics: block",
+                    found="absent",
+                )
+            ]
+        if parsed.metrics_block is None:
+            return [
+                Finding(
+                    level=Level.FAIL,
+                    rule="BR.metrics_parseable",
+                    field="Workflow Metrics",
+                    message=(
+                        "the Workflow Metrics yaml fence does not parse to a "
+                        "mapping rooted at 'workflow_metrics'"
+                    ),
+                    expected="valid yaml with a workflow_metrics mapping at the root",
+                    found="unparseable or missing root key",
+                )
+            ]
+
+        block = parsed.metrics_block
+        findings: list[Finding] = []
+
+        expected_version = self._metrics_config["schema_version"]
+        declared = block.get("schema_version")
+        if declared != expected_version:
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="BR.metrics_schema_version",
+                    field="Workflow Metrics",
+                    message=(
+                        f"block declares schema_version {declared!r} — this contract "
+                        f"enforces schema v{expected_version}; consumers compare only "
+                        "same-version blocks, so a mismatch is never coerced"
+                    ),
+                    expected=str(expected_version),
+                    found=str(declared),
+                )
+            )
+
+        catalog = set(self._metrics_config["catalog"])
+        present = set(block.keys())
+        missing = sorted(catalog - present)
+        unknown = sorted(present - catalog - {"schema_version"})
+        if missing or unknown:
+            parts = []
+            if missing:
+                parts.append(f"missing catalog key(s): {', '.join(missing)}")
+            if unknown:
+                parts.append(f"unknown key(s): {', '.join(unknown)}")
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="BR.metrics_key_shape",
+                    field="Workflow Metrics",
+                    message=(
+                        f"{'; '.join(parts)} — the catalog is closed: every key "
+                        "present, none invented (an unmeasured key holds "
+                        "{value: null, reason: ...}, it is never dropped)"
+                    ),
+                    expected="exactly schema_version + the contract catalog keys",
+                    found=f"{len(present)} key(s)",
+                )
+            )
+
+        for key, value in block.items():
+            if key == "schema_version":
+                continue
+            self._walk_metric_value(key, value, findings)
+        return findings
+
+    def _walk_metric_value(self, path: str, value: object, findings: list[Finding]) -> None:
+        """Recursive fabrication scan. An unmeasured value is legal ONLY as
+        the closed two-key availability mapping {value: null, reason:
+        <non-empty str>}; a bare null, an extra key riding that mapping, an
+        unfilled {placeholder} anywhere (the template copied verbatim — the
+        same brace guard `_parse_matrix_rows`/`_check_tasks_incomplete` use),
+        and an estimate-marked measured string all block. The reason-prose
+        exemption from the marker scan lives ONLY in the availability branch
+        (explaining WHY a value is null legitimately says 'estimated') — it
+        is shape-aware, never a key-name suffix match, so a sibling
+        `*_reason` key cannot smuggle an estimate through."""
+
+        def fabricated(found: str, message: str) -> Finding:
+            return Finding(
+                level=Level.FAIL,
+                rule="BR.metrics_fabricated",
+                field="Workflow Metrics",
+                message=f"{path}: {message}",
+                expected="a measured value, or {value: null, reason: <why>}",
+                found=found,
+            )
+
+        if value is None:
+            findings.append(fabricated("bare null", "bare null — record the availability mapping instead"))
+            return
+        if isinstance(value, dict):
+            if "value" in value and value["value"] is None:
+                extra = sorted(set(value) - {"value", "reason"})
+                if extra:
+                    findings.append(
+                        fabricated(
+                            f"extra key(s): {', '.join(extra)}",
+                            f"availability mapping is closed to exactly "
+                            f"{{value, reason}} — extra key(s): {', '.join(extra)}",
+                        )
+                    )
+                reason = value.get("reason")
+                if not isinstance(reason, str) or not reason.strip():
+                    findings.append(
+                        fabricated(
+                            "null without a reason",
+                            "availability mapping needs a non-empty reason",
+                        )
+                    )
+                elif "{" in reason and "}" in reason:
+                    findings.append(
+                        fabricated(reason, "unfilled template placeholder in the reason")
+                    )
+                return
+            for key, item in value.items():
+                self._walk_metric_value(f"{path}.{key}", item, findings)
+            return
+        if isinstance(value, list):
+            for i, item in enumerate(value):
+                self._walk_metric_value(f"{path}[{i}]", item, findings)
+            return
+        if isinstance(value, str):
+            if "{" in value and "}" in value:
+                findings.append(
+                    fabricated(value, "unfilled template placeholder — fill it or record "
+                               "{value: null, reason: ...}")
+                )
+            elif _ESTIMATE_MARKER.search(value):
+                findings.append(
+                    fabricated(
+                        value,
+                        "estimate marker in a measured value — measure it or record "
+                        "{value: null, reason: ...}",
+                    )
+                )
 
     def _check_tasks_incomplete(self, parsed: _ParsedBuildReport) -> list[Finding]:
         overall = parsed.overall_line or ""

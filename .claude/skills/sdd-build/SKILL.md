@@ -296,6 +296,18 @@ the risk level or a manifest task demands it (no flag needed), `opt-in` when
 only the `--tdd` flag activated it, `off` when nothing did. A report without
 the Schema Version row is treated as legacy by the contract gate below.
 
+**Emit the workflow_metrics block** (`WORKFLOW_CONTRACTS.yaml` →
+`workflow_metrics`, schema v1): fill the report's Workflow Metrics section
+with MEASURED values only — counts from this run's task table, review
+findings, fix rounds, coverage, and ledger skips. A value the build did not
+measure is `{value: null, reason: "<why>"}`; estimating, interpolating, or
+copying a prior run's numbers is forbidden conduct — an honest null beats a
+plausible guess. All 13 catalog keys stay present (the gate FAILs a dropped
+or invented key). Tokens/cost stay null unless the platform provides them
+reliably. Keep literal `{...}` braces out of measured strings and reasons —
+the gate's placeholder guard rejects them as unfilled template tokens
+(fails safe).
+
 ### Step 6.5: Contract Gate (mandatory)
 
 Validate the report just written against the Build phase contract — artifact
