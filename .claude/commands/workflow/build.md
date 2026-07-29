@@ -10,7 +10,7 @@ description: Execute implementation with on-the-fly task generation (Phase 3)
 ## Usage
 
 ```bash
-/build <design-file> [--judge[=MODE]]
+/build <design-file> [--tdd] [--judge[=MODE]]
 ```
 
 ## Examples
@@ -18,6 +18,10 @@ description: Execute implementation with on-the-fly task generation (Phase 3)
 ```bash
 /build .claude/sdd/features/DESIGN_NOTIFICATION_SYSTEM.md
 /build DESIGN_USER_AUTH.md
+
+# Opt-in TDD conduct: RED-GREEN per code task, evidence in BUILD_REPORT
+# (semantics owned by sdd-build "--tdd mode")
+/build DESIGN_USER_AUTH.md --tdd
 
 # With cross-model judge for code correctness (opt-in, advisory for build)
 /build DESIGN_AUTH.md --judge                 # advisory, default openai/gpt-4o

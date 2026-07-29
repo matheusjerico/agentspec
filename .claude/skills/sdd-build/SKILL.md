@@ -136,6 +136,45 @@ pytest              # tests
 Substitute the project's configured linter, type checker, and test runner when
 it is not a Python project.
 
+### Step 5.5: Whole-Branch Adversarial Review (mandatory)
+
+Contract: `WORKFLOW_CONTRACTS.yaml` → `build.execution.final_review`.
+
+After full validation passes, dispatch the review — never skip it, never
+self-review instead:
+
+1. Compute the branch scope: `BASE=$(git merge-base <default-branch> HEAD)`.
+2. Dispatch `code-reviewer` via the Task tool with: the `BASE..HEAD` diff,
+   the DEFINE's acceptance tests as the review lens, and the severity
+   taxonomy Critical / Important / Minor.
+3. Record the outcome in the BUILD_REPORT `## Review Verdict` section.
+
+| Findings | Action |
+|----------|--------|
+| None | Verdict `clean` → Step 6 |
+| Minor only | Record each; verdict `clean-with-minors` → Step 6 |
+| Critical/Important | Fix loop (below) |
+
+**Fix loop (budget 2 rounds, supervised and autonomous alike):** one round =
+fix the findings → re-run the tests covering the amended code → scoped
+re-review of the fix diff only. All findings resolved → verdict `clean` (or
+`clean-with-minors`). Budget exhausted with open findings → verdict `dirty`,
+open findings recorded as Blockers, recommend `/iterate`; under `/auto`,
+Gate R (sdd-autopilot) maps this to abort-with-gap-report.
+
+**Reviewer dispatch failure:** retry once; still failing → verdict `missing`
+with a visible WARN — never an assumed `clean`. A `missing` verdict blocks
+ship exactly like `dirty`.
+
+### `--tdd` mode (opt-in flag on /build)
+
+When invoked with `--tdd`, each code-bearing task follows RED-GREEN before
+the standard per-file verification: write the failing test → run it and
+observe the expected failure → write minimal code → run to green. Capture
+the observed RED excerpt per task in the BUILD_REPORT `## TDD Evidence`
+section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
+artifact)`. Without the flag, task execution is unchanged.
+
 ### Step 6: Generate the Build Report
 
 Write `.claude/sdd/reports/BUILD_REPORT_{FEATURE}.md`. See Output Obligations.
@@ -341,6 +380,8 @@ PRE-FLIGHT CHECK
 ├─ [ ] All files from manifest created
 ├─ [ ] Each file verified (lint, types, tests)
 ├─ [ ] Full validation passes (lint, types, test suite)
+├─ [ ] Whole-branch review dispatched; Review Verdict recorded (clean or clean-with-minors)
+├─ [ ] --tdd runs: TDD Evidence table filled for every code-bearing task
 ├─ [ ] No TODO comments left in code
 ├─ [ ] No hardcoded secrets or credentials
 ├─ [ ] Error cases handled

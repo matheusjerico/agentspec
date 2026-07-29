@@ -494,6 +494,15 @@ build:
     order: "by dependencies"
     verification: "after each file"
     retry_limit: 3
+    final_review:
+      reviewer: "code-reviewer"
+      scope: "merge-base(default-branch, HEAD)..HEAD diff"
+      lens: "DEFINE acceptance tests + severity taxonomy"
+      severities: [critical, important, minor]
+      verdicts: [clean, clean-with-minors, dirty, missing]
+      blocking: "critical|important unresolved -> dirty"
+      fix_loop_budget: 2
+      tdd_flag: "--tdd — opt-in RED-GREEN per code task, evidence in BUILD_REPORT"
 
 
 # =============================================================================
@@ -540,6 +549,7 @@ ship:
     - all_tests_passing
     - no_blocking_issues
     - acceptance_tests_verified
+    - review_verdict_clean
 
 # =============================================================================
 # CROSS-PHASE: ITERATE

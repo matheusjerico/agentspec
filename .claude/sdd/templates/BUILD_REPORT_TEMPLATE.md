@@ -99,6 +99,36 @@
 
 ---
 
+## Review Verdict
+
+> Whole-branch adversarial review — mandatory final step of the build
+> (`WORKFLOW_CONTRACTS.yaml` → `build.execution.final_review`). Ship refuses
+> `dirty` and `missing` verdicts.
+
+| Attribute | Value |
+|-----------|-------|
+| **Verdict** | {clean / clean-with-minors / dirty / missing} |
+| **Reviewer** | @code-reviewer |
+| **Diff scope** | {merge-base sha}..{HEAD sha} |
+| **Fix rounds used** | {0-2}/2 |
+
+| # | Severity | Finding | Location | Resolution |
+|---|----------|---------|----------|------------|
+| 1 | {Critical / Important / Minor} | {finding} | {file:line} | {fixed in {sha} / recorded (minor) / OPEN} |
+
+---
+
+## TDD Evidence (--tdd runs only)
+
+> One row per code-bearing manifest task. Non-code tasks record `n/a`.
+> Omit this section entirely when the build ran without `--tdd`.
+
+| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |
+|------|-----------|-------------------------------|-----------|--------|
+| {task} | {tests/...} | {expected failure line} | {X passed} | {sha} |
+
+---
+
 ## Issues Encountered
 
 | # | Issue | Resolution | Time Impact |
