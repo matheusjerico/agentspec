@@ -48,7 +48,8 @@ The headless runner rejects anything that is not an existing `DEFINE_{FEATURE}.m
               fire here) → write the artifact → Gate L → Gate J → ledger rows →
               checkpoint commit "auto({FEATURE}): design complete".
 5. BUILD      Load sdd-build; execute under its own decide-never-ask policy
-              (delegation, per-file retry_limit 3). Then Gate B. Checkpoint commit.
+              (delegation, per-file retry_limit 3, Step 5.5 whole-branch
+              review). Then Gate R (review verdict), then Gate B. Checkpoint commit.
 6. SHIP       Load sdd-ship. Gate S (pre-ship checklist). Archive. Final commit.
 7. PR         /create-pr. URL into the report. (Skipped stages per flags.)
 8. CLOSE      Terminal status into the report; delete .autopilot/ scratch;
@@ -82,7 +83,8 @@ it and abort rather than creating a second feature identity.
 | **D — Decision** | Design's own per-decision confidence (sdd-design confidence matrix) | ≥ 0.80 → inline ADR with `[ASSUMED]`, ledger-visible (unchanged conduct) | < 0.80 interactive → `AskUserQuestion`, answer recorded as a ledger row, proceed — **un-capped**: the human is the budget | none | < 0.80 headless → ABORT, Status `❌ Aborted (D)`, structured Pending Decision block in the report (resume re-asks it 1:1) | n/a (model-computed) |
 | **P — Provision** | specialist-autoprovision citation check after `scripts/generate-agent-router.py` regeneration (sub-flow owned by that skill; sensor contract: the `create-agent` parser contract) | new component citable in the oracle, core checklist items pass → proceed | authoring/validation failure → regenerate the component once with the violations in context | 1 per gap | budget exhausted → ABORT, gap report names the domain, attempts, failing checks | script not executable / oracle unreadable → VISIBLE SKIP row, fall back to `(general)` + WARN — never assume PASS |
 | **B — Build** | sdd-build per-file verification + BUILD_REPORT completeness | report shows 100% tasks complete, tests passing | per-file fix-and-retry (sdd-build owns it) | 3 per file | incomplete report after retries → ABORT, failed tasks listed | n/a |
-| **S — Ship** | pre-ship checklist (`WORKFLOW_CONTRACTS.yaml` → `ship.pre_ship_checklist`) | all 4 items pass | none | 0 | any unmet item → ABORT, item named | n/a |
+| **R — Review** | BUILD_REPORT Review Verdict (`build.execution.final_review` — whole-branch `code-reviewer` dispatch, sdd-build Step 5.5) | verdict `clean` / `clean-with-minors` → proceed | Critical/Important findings → fix-loop round (fix + scoped re-review; sdd-build owns it) | 2 rounds per build | open findings after budget → ABORT, gap report lists open findings + fix history | reviewer dispatch failed after retry → verdict `missing` → ABORT (fails closed — never an assumed clean) |
+| **S — Ship** | pre-ship checklist (`WORKFLOW_CONTRACTS.yaml` → `ship.pre_ship_checklist`) | all 5 items pass | none | 0 | any unmet item → ABORT, item named | n/a |
 | **PR** | `/create-pr` outcome | PR URL returned | none | 0 | failure → terminal status **⚠ Partial Success**, exact manual command in report | n/a |
 
 Gate ordering within the Design document phase is fixed: **Gate L, then Gate J** — the judge runs only after a lint PASS (ADR-003 `runs_after`; never on a structural FAIL, and not after a Gate L visible skip — a skipped lint is not a PASS, so Gate J records `SKIPPED (no lint PASS)` and the run proceeds). Design is the only document phase inside the loop — the pre-ignition BRAINSTORM/DEFINE are validated by their own supervised phase gates before this skill ever runs.
@@ -150,7 +152,7 @@ Phase skills assume an interactive user. Under autopilot, these overrides apply 
 | Design | Open questions may go back to the user | Confidence ≥ 0.80: the question becomes an inline ADR with the chosen default and an `[ASSUMED]` marker. Confidence < 0.80: **Gate D** — interactive asks the human (answer recorded, no assumption); headless aborts with the Pending Decision block |
 | Build | Already decide-never-ask | Unchanged. CRITICAL-risk halt maps to ABORT-with-report (the halt is preserved; only the reporting surface changes) |
 | Provisioning (within Design/Build) | The specialist-autoprovision layer fork may ask once at the component-model gate | Assume skill + thin executor, record `[ASSUMED]`; Gate P governs proceed/retry/abort |
-| Ship | Minor issues → ask user (0.80 confidence branch) | Checklist is binding and mechanical: all 4 items pass → proceed; any unmet item → ABORT. The 0.80 "ask" branch maps to: record a WARN ledger row and proceed **iff** the checklist itself passes |
+| Ship | Minor issues → ask user (0.80 confidence branch) | Checklist is binding and mechanical: all 5 items pass → proceed; any unmet item → ABORT. The 0.80 "ask" branch maps to: record a WARN ledger row and proceed **iff** the checklist itself passes |
 
 Every self-answered question, every `[ASSUMED]` marker, and every Gate D pause is mirrored into the RUN REPORT (Autonomous Decisions table; Gate D rows in the ledger) — the run is reviewable after the fact because everything it decided or asked is on the record.
 
