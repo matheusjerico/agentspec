@@ -505,6 +505,11 @@ verification results, and the Autonomous Decisions table.
 
 ## Handoff
 
+**PR boundary (`pr_readiness.behavior.build`):** the build produces evidence
+— verification results, the filled matrix, verdicts, commits — and never
+opens PRs; Ship validates readiness and `/create-pr` publishes, only on
+explicit user intent.
+
 When the build completes, suggest Phase 4:
 
 ```bash

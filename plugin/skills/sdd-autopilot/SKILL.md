@@ -57,8 +57,15 @@ The headless runner rejects anything that is not an existing `DEFINE_{FEATURE}.m
               --legacy-mode fail). Then Gate R (review verdict), then Gate B.
               Checkpoint commit.
 6. SHIP       Load sdd-ship. Gate S (pre-ship checklist). Archive. Final commit.
-7. PR         /create-pr. URL into the report. (Skipped stages per flags.)
+7. PR         /create-pr consuming the PR_READY artifact Ship generated
+              (pr_readiness contract): mutable items revalidated immediately
+              before publication; description pasted from the artifact. URL
+              into the report; the artifact's deletion rides the run's
+              close-run commit (a reports/ working file, never archived).
+              (Skipped stages per flags.)
 8. CLOSE      Terminal status into the report; delete .autopilot/ scratch;
+              close-run commit (terminal report status + the PR_READY
+              artifact deletion from Stage 7);
               notification step (best-effort).
 ```
 

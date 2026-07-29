@@ -239,6 +239,17 @@ PRE-FLIGHT CHECK
 
 ---
 
+## Generate the PR_READY artifact (post-Gate-S, additive)
+
+After the quality gate passes, validate `WORKFLOW_CONTRACTS.yaml` →
+`pr_readiness` from the archived evidence (report sections, matrix, verdicts,
+git state) and write `PR_READY_{FEATURE}.md` to `.claude/sdd/reports/`
+following `PR_READY_TEMPLATE.md`. A failed dimension does NOT block the ship:
+record it in the artifact's Gaps section with the exact action to reach
+readiness (status `⚠ Gaps`) — non-destructive, always. `/create-pr` consumes
+the artifact and revalidates the mutable rows immediately before publication;
+delete the artifact once the PR URL exists.
+
 ## Close the cycle — end-of-cycle handoff
 
 When the archive is complete, report closure to the user:

@@ -7,6 +7,39 @@ description: Create pull request with conventional commits and structured descri
 
 > Automate professional pull request creation with conventional commits and structured descriptions
 
+## PR_READY consumption (unified readiness — `WORKFLOW_CONTRACTS.yaml` → `pr_readiness`)
+
+When `.claude/sdd/reports/PR_READY_{FEATURE}.md` exists (written by Ship
+after Gate S), this command consumes it instead of re-deriving readiness.
+`{FEATURE}` resolves to the single `PR_READY_*.md` in reports/; when several
+exist, name the feature explicitly — never guess.
+
+**Skip-gate:** with a PR_READY artifact, SKIP legacy Steps 1–5 below
+(categorization, clarifying questions, description building) — the artifact
+already answers them. Derive the PR title from the feature name and its
+Requirements Delivered; resume the legacy flow at Step 6 (branch/commit/push)
+and use the artifact's description at Step 8. The legacy steps run in full
+only when no artifact exists.
+
+1. **Revalidate the MUTABLE subset immediately before publication** — every
+   checklist row marked `mutable: yes`: working tree clean, base resolved,
+   tests re-run green, build (when configured), and `verdict_unchanged` (no
+   commits since ship without re-review). Any drift → REFUSE publication and
+   list exactly which mutable item moved and how to fix it — never publish
+   stale readiness, never destroy work.
+2. **Generate the description from the artifact's skeleton** — paste the
+   sections (problem/solution, scope, requirements delivered, test strategy,
+   the summarized Traceability Matrix, residual risks, migration/rollback,
+   review findings, validation instructions, screenshots when applicable).
+   The matrix is PASTED from the artifact, never reconstructed.
+3. **Publish only on explicit user intent** — the user invoked this command,
+   or the autopilot PR stage runs it under flags the user already sanctioned.
+   Never open a PR as a side effect of any other step.
+4. **Clean up** — delete the PR_READY artifact once the PR URL exists.
+
+**No PR_READY artifact → the legacy conduct below applies unchanged** (standalone
+use outside the SDD flow is fully supported).
+
 ## Usage
 
 ```bash

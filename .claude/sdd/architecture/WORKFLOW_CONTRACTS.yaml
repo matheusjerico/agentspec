@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.14.0
+# Version: 3.15.0
 # Date: 2026-07-29
 
-version: "3.14.0"
+version: "3.15.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -566,6 +566,36 @@ commit_parallel:
     - "merge strategy defined for the group"
   on_conflict: "serialize the remainder of the group — never an automatic risky merge"
 
+# Unified PR readiness (Increment 8). ONE definition shared by Build, Ship
+# and /create-pr (§14.5). Every item maps to evidence the workflow already
+# produces; `mutable: true` items are revalidated by /create-pr immediately
+# before publication. No linter rules bind on this block — the underlying
+# evidence is already linter-enforced.
+pr_readiness:
+  shared_by: [build, ship, create-pr]
+  branch:
+    working_tree_clean: { required: true, evidence: "git status --short empty", mutable: true }
+    base_resolved: { required: true, evidence: "merge-base with the target branch resolves AND a merge-tree dry-run against the current base tip is conflict-free", mutable: true }
+  quality:
+    lint: { required: pass, evidence: "BUILD_REPORT Verification Results — Lint Check", mutable: false }
+    types: { required: pass_or_not_configured, evidence: "BUILD_REPORT Verification Results — Type Check", mutable: false }
+    tests: { required: pass, evidence: "BUILD_REPORT Verification Results — Tests; re-run at publication", mutable: true }
+    build: { required: pass_or_not_configured, evidence: "project build command when configured", mutable: true }
+  traceability:
+    must_requirements_covered: { required: true, evidence: "filled Traceability Matrix — every MUST row Result pass or exception-recorded", mutable: false }
+  review:
+    branch_verdict: { required: [clean, clean-with-minors], evidence: "BUILD_REPORT Review Verdict", mutable: false }
+    blocking_findings_open: { required: 0, evidence: "Review Verdict findings table — no OPEN Critical/Important", mutable: false }
+    verdict_unchanged: { required: true, evidence: "HEAD equals the PR_READY 'Ship HEAD SHA' row, or newer commits carry a fresh clean/clean-with-minors re-review with 0 open blocking findings", mutable: true }
+  delivery:
+    migration_plan: { required: present_or_not_applicable, evidence: "DESIGN Schema Evolution Plan when applicable; otherwise the PR_READY 'Migration & rollback' section records an explicit n/a", mutable: false }
+    rollback_plan: { required: present_or_not_applicable, evidence: "DESIGN Schema Evolution Plan when applicable; otherwise the PR_READY 'Migration & rollback' section records an explicit n/a", mutable: false }
+    residual_risks: { required: documented, evidence: "Review Verdict recorded minors + SHIPPED residuals", mutable: false }
+  behavior:
+    build: "produces evidence, never opens PRs"
+    ship: "validates this contract after Gate S; writes PR_READY_{FEATURE}.md or a gap report — non-destructive, never a new ship blocker"
+    create_pr: "consumes PR_READY when present; revalidates every mutable item immediately before publication; explicit user intent required (autopilot PR stage = flag-sanctioned intent); no PR_READY -> legacy conduct"
+
 
 # =============================================================================
 # PHASE 2: DESIGN
@@ -1015,6 +1045,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.15.0"
+    date: "2026-07-29"
+    changes:
+      - "PR_READINESS (Increment 8): new top-level pr_readiness block — one readiness definition shared by Build, Ship and /create-pr (5 dimensions: branch, quality, traceability, review, delivery — 13 items, each mapped to its existing evidence source with a mutable flag). Ship validates the contract after Gate S and writes PR_READY_{FEATURE}.md (new template) or a gap report naming exact actions — non-destructive, never a new ship blocker; /create-pr consumes the artifact, revalidates every mutable item immediately before publication, pastes the filled Traceability Matrix into the §14.3 description, and keeps byte-compatible legacy conduct when no artifact exists; publication always requires explicit user intent. Build produces evidence, never opens PRs; the autopilot PR stage consumes PR_READY. Zero linter changes."
+
   - version: "3.14.0"
     date: "2026-07-29"
     changes:
