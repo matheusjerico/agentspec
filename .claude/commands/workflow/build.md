@@ -10,7 +10,7 @@ description: Execute implementation with on-the-fly task generation (Phase 3)
 ## Usage
 
 ```bash
-/build <design-file> [--tdd] [--judge[=MODE]]
+/build <design-file> [--tdd] [--no-tdd] [--judge[=MODE]]
 ```
 
 ## Examples
@@ -20,8 +20,15 @@ description: Execute implementation with on-the-fly task generation (Phase 3)
 /build DESIGN_USER_AUTH.md
 
 # Opt-in TDD conduct: RED-GREEN per code task, evidence in BUILD_REPORT
-# (semantics owned by sdd-build "--tdd mode")
+# (semantics owned by sdd-build "TDD mode" — effective mode is risk-driven:
+# high/critical risk or a manifest task with execution.tdd: required forces
+# TDD regardless of flags)
 /build DESIGN_USER_AUTH.md --tdd
+
+# Dispense TDD — honored ONLY at low/medium risk, with a justification
+# recorded in the report; refused and recorded at high/critical
+# (WORKFLOW_CONTRACTS.yaml -> tdd_policy.no_tdd_flag)
+/build DESIGN_DOCS_REFRESH.md --no-tdd
 
 # With cross-model judge for code correctness (opt-in, advisory for build)
 /build DESIGN_AUTH.md --judge                 # advisory, default openai/gpt-4o

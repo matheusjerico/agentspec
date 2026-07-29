@@ -719,3 +719,130 @@ def test_design_phase_required_task_fields_not_a_list_is_error_exit_two(
     code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
     assert code == 2
     assert "ERROR:" in capsys.readouterr().err
+
+
+# --- --phase build, tdd_policy (BR.tdd_required_by_risk) ---------------------
+
+
+def _tdd_policy_block() -> dict[str, Any]:
+    """The real top-level `tdd_policy` shape from WORKFLOW_CONTRACTS.yaml.
+    The CLI only reads `risk_policy`/`exception_categories`; the rest is
+    carried along because this mirrors the on-disk contract, not a
+    CLI-specific shape."""
+    return {
+        "effective_mode_rule": (
+            "strongest of: --tdd flag (opt-in), risk_policy[risk level], any "
+            "manifest task with execution.tdd == required"
+        ),
+        "risk_policy": {
+            "low": "recommended",
+            "medium": "required_for_logic",
+            "high": "required",
+            "critical": "required",
+        },
+        "no_tdd_flag": {
+            "dispenses": ["low", "medium"],
+            "requires": "recorded_justification",
+            "never": ["high", "critical"],
+        },
+        "exception_categories": [
+            "non_executable_documentation",
+            "declarative_configuration",
+            "generated_artifact",
+            "vendored_content",
+            "infrastructure_declaration",
+        ],
+        "red_validity": (
+            "a broken RED command, an unrelated import error, or a pre-existing "
+            "failure is not RED evidence"
+        ),
+        "enforcement": {
+            "high_critical_off": "FAIL",
+            "medium_off": "WARN",
+            "low_off": "silent",
+            "no_risk_row": "silent",
+        },
+    }
+
+
+def _build_contracts_data_with_tdd_policy() -> dict[str, Any]:
+    data = _build_contracts_data()
+    data["tdd_policy"] = _tdd_policy_block()
+    return data
+
+
+_VALID_BUILD_REPORT_HIGH_RISK_TDD_OFF = _VALID_BUILD_REPORT.replace(
+    "| **TDD Mode** | off |\n",
+    "| **TDD Mode** | off |\n| **Risk Level** | high |\n",
+)
+
+
+def test_build_phase_tdd_required_by_risk_high_off_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data_with_tdd_policy()
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(
+        tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT_HIGH_RISK_TDD_OFF
+    )
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "BR.tdd_required_by_risk" in out
+
+
+def test_build_phase_tdd_policy_absent_leaves_rule_off_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_build_contracts(tmp_path / "contracts.yaml")  # no tdd_policy key
+    report = _write_report(
+        tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT_HIGH_RISK_TDD_OFF
+    )
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "VERDICT: PASS" in out
+    assert "BR.tdd_required_by_risk" not in out
+
+
+def test_build_phase_tdd_policy_risk_policy_not_a_dict_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data_with_tdd_policy()
+    data["tdd_policy"]["risk_policy"] = "high"
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT)
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err
+
+
+def test_build_phase_tdd_policy_exception_categories_not_a_list_is_error_exit_two(
+    tmp_path, capsys
+):
+    data = _build_contracts_data()
+    data["tdd_policy"] = {
+        "risk_policy": {"high": "required"},
+        "exception_categories": "nope",
+    }
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = tmp_path / "BUILD_REPORT_X.md"
+    report.write_text(_VALID_BUILD_REPORT)
+    assert cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)]) == 2
+
+
+def test_build_phase_tdd_policy_unknown_obligation_is_error_exit_two(tmp_path, capsys):
+    data = _build_contracts_data()
+    data["tdd_policy"] = {
+        "risk_policy": {"high": "Required"},
+        "exception_categories": ["non_executable_documentation"],
+    }
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = tmp_path / "BUILD_REPORT_X.md"
+    report.write_text(_VALID_BUILD_REPORT)
+    assert cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)]) == 2
