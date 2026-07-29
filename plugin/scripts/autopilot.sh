@@ -10,20 +10,40 @@
 # the skill writes, fires best-effort notifications, and maps the report's
 # status to a process exit code.
 #
+# Input contract: this script takes a path to a pre-validated
+# DEFINE_{FEATURE}.md document, not a raw intent string. Headless mode
+# cannot answer interview questions, so the DEFINE must be produced
+# interactively first — run `/auto "<intent>"` in an interactive Claude Code
+# session, then relaunch this script with the resulting DEFINE path. The
+# DEFINE path is validated after run_preflight_checks cd's to the repository
+# root, so it is resolved relative to the repository root (matching every
+# other relative path this script already uses — the /auto command path,
+# the reports directory): invoke from anywhere inside the repo and pass a
+# repo-root-relative or absolute path.
+#
+# The sdd-autopilot skill re-scores the DEFINE against the same 15-point
+# ignition gate used interactively before proceeding; the RUN REPORT may now
+# also terminate with "❌ Aborted (I)" (ignition re-score below 15/15) or
+# "❌ Aborted (D)" (a design decision is pending and requires interactive
+# resumption) — both map to exit code 1 through the unchanged status mapping
+# below.
+#
 # Prerequisites:
 #   - claude CLI on PATH (https://claude.com/claude-code)
 #   - run from inside a git repository (any subdirectory — the script cd's
 #     to the repository root before invoking claude)
 #   - the AgentSpec /auto command available: vendored at
 #     .claude/commands/workflow/auto.md, or installed as a plugin
+#   - a pre-validated DEFINE_{FEATURE}.md, produced by an interactive
+#     `/auto "<intent>"` run
 #
 # Usage:
-#   ./autopilot.sh "<intent>" [passthrough flags]
+#   ./autopilot.sh <path/to/DEFINE_FEATURE.md> [passthrough flags]
 #   ./autopilot.sh --help
 #
 # Passthrough flags (forwarded verbatim to /auto — semantics owned by the
 # sdd-autopilot skill, not this script):
-#   --no-brainstorm --no-judge --no-ship --no-pr --max-iterations N
+#   --no-judge --no-ship --no-pr --max-iterations N
 #
 # Environment variables:
 #   AUTOPILOT_TIMEOUT_MIN   Minutes before the claude invocation is killed
@@ -47,8 +67,9 @@
 set -euo pipefail
 
 readonly AUTO_COMMAND_RELATIVE_PATH=".claude/commands/workflow/auto.md"
+readonly DEFINE_BASENAME_REGEX='^DEFINE_[A-Z0-9_]+\.md$'
 
-INTENT=""
+DEFINE_PATH=""
 PASSTHROUGH_ARGS=()
 REPO_ROOT=""
 TIMEOUT_MIN="${AUTOPILOT_TIMEOUT_MIN:-60}"
@@ -65,19 +86,20 @@ EXIT_CODE=2
 
 print_usage() {
     cat <<EOF
-Usage: $(basename "$0") "<intent>" [passthrough flags]
+Usage: $(basename "$0") <path/to/DEFINE_FEATURE.md> [passthrough flags]
        $(basename "$0") --help
 
-Runs the full AgentSpec SDD workflow autonomously from a single intent via
-a headless 'claude -p "/auto ..."' invocation. All gate/retry/phase policy
-lives in the sdd-autopilot skill — this script only preflights, invokes,
-reads the RUN REPORT, and notifies.
+Runs the full AgentSpec SDD workflow autonomously from a pre-validated
+DEFINE document via a headless 'claude -p "/auto ..."' invocation. All
+gate/retry/phase policy lives in the sdd-autopilot skill — this script only
+preflights, invokes, reads the RUN REPORT, and notifies.
 
 Arguments:
-  <intent>                  The feature intent, in quotes (required)
+  <path/to/DEFINE_FEATURE.md>  Path to an existing DEFINE_{FEATURE}.md
+                                document, resolved relative to the
+                                repository root (required)
 
 Passthrough flags (forwarded to /auto verbatim):
-  --no-brainstorm           Skip Phase 0; intent feeds Define directly
   --no-judge                Skip the judge gate everywhere
   --no-ship                 Stop after Build; no archive
   --no-pr                   No PR; the branch is the deliverable
@@ -95,8 +117,8 @@ Exit codes:
   3   RUN REPORT Status contains "Partial Success"
 
 Examples:
-  $(basename "$0") "Add a --dry-run flag to scripts/rollout-agentspec.sh"
-  $(basename "$0") "Add retry to the ingest job" --no-brainstorm --no-ship
+  $(basename "$0") .claude/sdd/features/DEFINE_JUDGE_LAYER.md
+  $(basename "$0") .claude/sdd/features/DEFINE_INGEST_RETRY.md --no-ship --no-pr
 EOF
 }
 
@@ -117,12 +139,22 @@ parse_args() {
 
     if [[ $# -eq 0 ]]; then
         print_usage >&2
-        fail_preflight "missing required <intent> argument"
+        fail_preflight "missing required <path/to/DEFINE_FEATURE.md> argument"
     fi
 
-    INTENT="$1"
+    DEFINE_PATH="$1"
     shift
     PASSTHROUGH_ARGS=("$@")
+}
+
+validate_define_argument() {
+    [[ -f "$DEFINE_PATH" ]] \
+        || fail_preflight "Headless autopilot requires a pre-validated DEFINE document — no file found at '${DEFINE_PATH}'. Produce one with an interactive /auto \"<intent>\" run, then relaunch this script with the resulting DEFINE path."
+
+    local define_basename
+    define_basename="$(basename "$DEFINE_PATH")"
+    [[ "$define_basename" =~ $DEFINE_BASENAME_REGEX ]] \
+        || fail_preflight "expected a DEFINE_{FEATURE}.md file (basename matching ${DEFINE_BASENAME_REGEX}), got: '${define_basename}'"
 }
 
 auto_command_resolves() {
@@ -146,6 +178,8 @@ run_preflight_checks() {
         || fail_preflight "failed to cd into repository root: ${repo_root}"
     REPO_ROOT="$repo_root"
 
+    validate_define_argument
+
     auto_command_resolves \
         || fail_preflight "AgentSpec /auto command not found — install the AgentSpec plugin or vendor .claude/ into this repository"
 }
@@ -168,9 +202,9 @@ escape_for_double_quotes() {
 }
 
 build_prompt() {
-    local escaped_intent
-    escaped_intent="$(escape_for_double_quotes "$INTENT")"
-    PROMPT="/auto \"${escaped_intent}\""
+    local escaped_define_path
+    escaped_define_path="$(escape_for_double_quotes "$DEFINE_PATH")"
+    PROMPT="/auto \"${escaped_define_path}\""
 
     if [[ ${#PASSTHROUGH_ARGS[@]} -gt 0 ]]; then
         PROMPT+=" ${PASSTHROUGH_ARGS[*]}"

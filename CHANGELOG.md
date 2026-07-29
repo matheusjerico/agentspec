@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Autopilot Ignition Gate — mandatory human-answered interview before autonomous runs** (BREAKING for the headless CLI):
+  - Gate I (Ignition) replaces Gate 0: the run ignites only when the DEFINE **re-scores** 15/15 read from disk — the recorded Clarity Score Breakdown is display metadata, never the sensor; below the gate → `❌ Aborted (I)` with a recomputed gap report and an explicit recorded-score discrepancy note. Nothing autonomous (no RUN REPORT branch/commits) exists before Gate I passes
+  - `/auto` gains three argument forms: `"<intent>"` (supervised interactive Brainstorm + Define interview, human-answered until 15/15 — zero `[ASSUMED]` markers pre-ignition; abandonment leaves no run), `<path/to/DEFINE_{FEATURE}.md>` (straight to Gate I), `FEATURE_NAME` (resume). The Brainstorm/Define auto-conduct overrides were deleted from `sdd-autopilot` — those phases never run autonomously anymore
+  - New Gate D (Decision): Design decisions below 0.80 confidence are never assumed — interactive runs ask the user (un-capped, ANSWERED ledger rows; `--max-iterations` never bounds Gate D); headless runs abort `❌ Aborted (D)` with a structured Pending Decision block; an interactive resume re-asks it 1:1 and continues without regenerating approved artifacts. Decisions ≥ 0.80 keep the inline-ADR + `[ASSUMED]` conduct
+  - **BREAKING (headless CLI):** `scripts/autopilot.sh` now takes `<path/to/DEFINE_{FEATURE}.md>` instead of `"<intent>"` — a raw intent is a preflight usage error (exit 2) pointing to the interactive `/auto`; exit codes 0/1/2/3 unchanged; `--no-brainstorm` removed from headless help (flags still forwarded verbatim; it is intent-form-only)
+  - `AUTOPILOT_RUN_TEMPLATE.md`: DEFINE-input metadata row, I/D gate legend + ANSWERED outcome, Pending Decision section, Human Interactions count (Gate D pauses), Gate-I gap report with recomputed scores
+  - `WORKFLOW_CONTRACTS.yaml`: descriptive `autopilot:` block updated (`ignition_gate` 15/15 re-scored, `decision_gate`, ignition-boundary invariants) — no sensor or phase contract modified
+  - Runner test suite migrated to the DEFINE-path contract (24 tests, 5 new; 51 repo-wide passing); `docs/getting-started/autopilot.md` rewritten for the ignition model; full SDD cycle archived in `.claude/sdd/archive/AUTOPILOT_IGNITION_GATE/`
+
 ### Added
 
 - **Specialist KB Bootstrap** — generated specialist agents are born with a KB, and light KBs get promoted when reuse proves the domain matters:
