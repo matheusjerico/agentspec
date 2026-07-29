@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_TASK_REVIEW.md](./DEFINE_TASK_REVIEW.md) |
 | **Risk Level** | medium (echo from DEFINE — build-loop conduct + report contract) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 | **Design Confidence** | 0.90 — fifth extension of the established contract pattern |
 
 ---
@@ -368,4 +368,4 @@ Not applicable.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TASK_REVIEW.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TASK_REVIEW.md`

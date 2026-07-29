@@ -532,3 +532,224 @@ def test_define_literal_exception_wording_known_category_is_clean() -> None:
     )
     verdict = _lint_with_tdd_policy(report)
     assert "BR.tdd_exception_invalid" not in _rules(verdict)
+
+
+# --- Task review (BR.task_review_missing / BR.task_review_dirty) -----------
+#
+# Opt-in via the constructor's `task_review_verdicts` param (None by default,
+# exercised above by every plain `_contract()`-built test). This block arms
+# it — alone, deliberately not combined with `risk_tdd_policy`/
+# `tdd_exception_categories` — with the real WORKFLOW_CONTRACTS.yaml
+# `task_review.verdicts` vocabulary, covering the risk-vs-missing-review
+# matrix (`BR.task_review_missing`) plus the dirty/invalid-token check
+# (`BR.task_review_dirty`), which fires at any risk level independent of the
+# missing rule's severity gate.
+
+TASK_REVIEW_VERDICTS = ["clean", "clean-with-minors", "dirty", "skipped-by-policy"]
+
+
+def _contract_with_task_review(legacy_level: Level = Level.WARN) -> BuildReportContract:
+    return BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=legacy_level,
+        task_review_verdicts=TASK_REVIEW_VERDICTS,
+    )
+
+
+def _lint_with_task_review(report: str, legacy_level: Level = Level.WARN) -> Verdict:
+    return lint(report, _contract_with_task_review(legacy_level))
+
+
+def _report_with_task_ids(report: str, task_id_1: str, task_id_2: str) -> str:
+    """VALID_REPORT's Task Execution table has no dedicated Task ID column
+    (unlike BUILD_REPORT_TEMPLATE.md's `# | Task ID | Task | Agent | ...`) —
+    the parser reads whatever sits in cells[1] (here, the Task description)
+    as the task id. Replace both rows' cells[1] with real-looking ids so
+    each task-review test's intent stays legible."""
+    report = mutate(
+        report,
+        "| 1 | Implement parser | python-pro | ✅ |",
+        f"| 1 | {task_id_1} | python-pro | ✅ |",
+    )
+    return mutate(
+        report,
+        "| 2 | Write tests | test-generator | ✅ |",
+        f"| 2 | {task_id_2} | test-generator | ✅ |",
+    )
+
+
+def _report_with_risk_level(report: str, risk_level: str) -> str:
+    """VALID_REPORT with a `Risk Level` metadata row inserted after `TDD
+    Mode` — TDD Mode itself stays `off` and `_contract_with_task_review`
+    never passes `risk_tdd_policy`, so `BR.tdd_required_by_risk` stays
+    disarmed and findings stay isolated to the task-review rules."""
+    return mutate(
+        report,
+        "| **TDD Mode** | off |\n",
+        f"| **TDD Mode** | off |\n| **Risk Level** | {risk_level} |\n",
+    )
+
+
+def _task_reviews_section(rows: list[tuple[str, str]]) -> str:
+    """Render a minimal `## Task Reviews` section: only cells[1] (Task ID)
+    and cells[4] (Verdict) are read by the parser, but all 5 columns are
+    populated to mirror BUILD_REPORT_TEMPLATE.md's shape."""
+    lines = [
+        "\n## Task Reviews\n",
+        "| # | Task ID | Risk | Reviewer | Verdict |",
+        "|---|---------|------|----------|---------|",
+    ]
+    lines.extend(
+        f"| {i} | {task_id} | high | @reviewer | {verdict} |"
+        for i, (task_id, verdict) in enumerate(rows, start=1)
+    )
+    return "\n".join(lines) + "\n"
+
+
+def test_task_review_missing_high_risk_two_tasks_no_reviews_fails() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "high")
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "BR.task_review_missing"]
+    assert len(findings) == 2
+
+
+def test_task_review_all_tasks_reviewed_high_risk_passes() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "high")
+    report += _task_reviews_section([("TASK-001", "clean"), ("TASK-002", "clean-with-minors")])
+    verdict = _lint_with_task_review(report)
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert "BR.task_review_dirty" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_task_review_one_task_unreviewed_names_that_task() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "high")
+    report += _task_reviews_section([("TASK-001", "clean")])
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "BR.task_review_missing"]
+    assert len(findings) == 1
+    assert "TASK-002" in findings[0].message
+    assert "TASK-001" not in findings[0].message
+
+
+def test_task_review_missing_medium_risk_warns_not_fails() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "medium")
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.WARN
+    findings = [f for f in verdict.findings if f.rule == "BR.task_review_missing"]
+    assert len(findings) == 2
+    assert all(f.level == Level.WARN for f in findings)
+
+
+def test_task_review_missing_low_risk_silent() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "low")
+    verdict = _lint_with_task_review(report)
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_task_review_missing_no_risk_level_row_silent() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    verdict = _lint_with_task_review(report)  # VALID_REPORT has no Risk Level row
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_task_review_dirty_verdict_fails_independent_of_risk() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    # No Risk Level row at all: BR.task_review_missing stays silent (no risk
+    # token), but BR.task_review_dirty is not gated on risk at all.
+    report += _task_reviews_section([("TASK-001", "dirty"), ("TASK-002", "clean")])
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "BR.task_review_dirty"]
+    assert len(findings) == 1
+    assert "TASK-001" in findings[0].message
+    assert "BR.task_review_missing" not in _rules(verdict)
+
+
+def test_task_review_invalid_verdict_token_fails() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report += _task_reviews_section([("TASK-001", "sketchy"), ("TASK-002", "clean")])
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "BR.task_review_dirty"]
+    assert len(findings) == 1
+    assert findings[0].found == "sketchy"
+
+
+def test_task_review_skipped_by_policy_is_valid() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "high")
+    report += _task_reviews_section([("TASK-001", "skipped-by-policy"), ("TASK-002", "clean")])
+    verdict = _lint_with_task_review(report)
+    assert "BR.task_review_dirty" not in _rules(verdict)
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_task_review_v1_report_with_dash_task_ids_has_no_missing_findings() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "-", "-")
+    report = _report_with_risk_level(report, "high")
+    verdict = _lint_with_task_review(report)
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_task_review_disarmed_when_constructor_param_is_none() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-001", "TASK-002")
+    report = _report_with_risk_level(report, "high")
+    verdict = _lint(report)  # plain _contract(): task_review_verdicts is None
+    assert "BR.task_review_missing" not in _rules(verdict)
+    assert "BR.task_review_dirty" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_decoy_task_reviews_heading_does_not_shadow_real_section() -> None:
+    report = _report_with_risk_level(_report_with_task_ids(VALID_REPORT, "TASK-A-001", "TASK-B-001"), "high")
+    decoy = (
+        "\n## Task Reviews Notes\n\n"
+        "Prose mentioning a dirty verdict that must not count.\n"
+        "| 1 | FAKE-999 | high | @nobody | dirty | 0 / 0 | 0/1 |\n"
+    )
+    real = _task_reviews_section([("TASK-A-001", "clean"), ("TASK-B-001", "clean")])
+    verdict = _lint_with_task_review(report + decoy + real)
+    rules = _rules(verdict)
+    assert "BR.task_review_missing" not in rules
+    assert "BR.task_review_dirty" not in rules
+
+
+def test_clean_decoy_cannot_mask_a_dirty_real_section() -> None:
+    report = _report_with_risk_level(_report_with_task_ids(VALID_REPORT, "TASK-A-001", "TASK-B-001"), "high")
+    decoy = (
+        "\n## Task Reviews Draft\n\n"
+        "| 1 | TASK-A-001 | high | @x | clean | 0 / 0 | 0/1 |\n"
+        "| 2 | TASK-B-001 | high | @x | clean | 0 / 0 | 0/1 |\n"
+    )
+    real = _task_reviews_section([("TASK-A-001", "clean"), ("TASK-B-001", "dirty")])
+    verdict = _lint_with_task_review(report + decoy + real)
+    assert "BR.task_review_dirty" in _rules(verdict)
+
+
+def test_placeholder_review_row_is_skipped_not_invalid() -> None:
+    report = _report_with_risk_level(_report_with_task_ids(VALID_REPORT, "TASK-A-001", "TASK-B-001"), "low")
+    placeholder = (
+        "\n## Task Reviews\n\n"
+        "| # | Task ID | Risk | Reviewer | Verdict | Blocking open / Minor | Fix rounds |\n"
+        "|---|---------|------|----------|---------|----------------------|------------|\n"
+        "| 1 | {TASK-AREA-001} | {low/medium/high/critical} | {@reviewer / (self)} | {clean / clean-with-minors / dirty / skipped-by-policy} | {0 / 1} | {0-1}/1 |\n"
+    )
+    verdict = _lint_with_task_review(report + placeholder)
+    assert "BR.task_review_dirty" not in _rules(verdict)

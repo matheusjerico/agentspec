@@ -139,6 +139,33 @@ self-documenting names, config in YAML over hardcoded values. Verify
 incrementally — after each file, not only at the end. Fix forward: if something
 breaks, fix it immediately. Keep each file independently functional.
 
+### Step 4.6: Per-Task Review (risk-driven — `task_review` contract)
+
+After a task's verification passes, review it BEFORE its dependents start
+(`WORKFLOW_CONTRACTS.yaml` → `task_review`):
+
+- **Who reviews** (`policy_by_risk`, keyed on the task's manifest `risk`):
+  `low` → executor checklist (self); `medium` → independent reviewer for
+  higher-risk or interface tasks (selective); `high` → the task's manifest
+  `reviewer`, independent, for all relevant code tasks; `critical` →
+  independent reviewer plus a specialist second opinion. Reviewer ==
+  implementer only where the policy allows (low, and unselected medium).
+- **Blind-first (§11.3):** the reviewer receives requirement refs, acceptance
+  criteria, the task diff, tests and evidence, dependent interfaces, and
+  applicable risks — NEVER the implementer's rationale before the initial
+  assessment is formed.
+- **Verdicts:** `clean` / `clean-with-minors` / `dirty` /
+  `skipped-by-policy` (a recorded policy decision, e.g. "low →
+  executor_checklist"). Record one row per task in the report's
+  `## Task Reviews` section.
+- **Fix budget:** blocking (Critical/Important) findings get exactly
+  `fix_budget_per_task` (1) round — separate from the final review's 2. Still
+  dirty after the round → the task records `dirty` and its dependents DO NOT
+  start (`dependents_blocked_on`).
+- **Invariant:** the whole-branch final review (Step 5.5) stays mandatory —
+  task reviews feed it, never replace it; the final pass re-evaluates
+  integration, not just the sum of local verdicts.
+
 ### Step 5: Run Full Validation
 
 After all files are created:

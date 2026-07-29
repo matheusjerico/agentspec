@@ -846,3 +846,93 @@ def test_build_phase_tdd_policy_unknown_obligation_is_error_exit_two(tmp_path, c
     report = tmp_path / "BUILD_REPORT_X.md"
     report.write_text(_VALID_BUILD_REPORT)
     assert cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)]) == 2
+
+
+# --- --phase build, task_review (BR.task_review_missing / _dirty) -----------
+
+
+def _task_review_block() -> dict[str, Any]:
+    """The real top-level `task_review` shape from WORKFLOW_CONTRACTS.yaml.
+    The CLI only reads `verdicts`; the rest is carried along because this
+    mirrors the on-disk contract, not a CLI-specific shape."""
+    return {
+        "verdicts": ["clean", "clean-with-minors", "dirty", "skipped-by-policy"],
+        "policy_by_risk": {
+            "low": "executor_checklist",
+            "medium": "selective_independent",
+            "high": "independent_required",
+            "critical": "independent_plus_specialist",
+        },
+        "fix_budget_per_task": 1,
+        "dependents_blocked_on": ["dirty"],
+        "enforcement": {
+            "high_critical_missing": "FAIL",
+            "medium_missing": "WARN",
+            "low_missing": "silent",
+            "no_risk_row": "silent",
+            "dirty_verdict": "FAIL",
+        },
+    }
+
+
+def _build_contracts_data_with_task_review() -> dict[str, Any]:
+    data = _build_contracts_data()
+    data["task_review"] = _task_review_block()
+    return data
+
+
+# `_VALID_BUILD_REPORT`'s Task Execution table has no dedicated Task ID
+# column — the parser reads cells[1] (here, the Task description) as the
+# task id, so a real-looking id is substituted in directly. No `tdd_policy`
+# block is added to this test's contracts data (Risk Level high + TDD Mode
+# off would otherwise independently FAIL via BR.tdd_required_by_risk),
+# keeping these tests focused on task_review alone.
+_VALID_BUILD_REPORT_HIGH_RISK_WITH_TASK_ID = _VALID_BUILD_REPORT.replace(
+    "| 1 | Implement feature | python-pro | ✅ |", "| 1 | TASK-001 | python-pro | ✅ |"
+).replace(
+    "| **TDD Mode** | off |\n",
+    "| **TDD Mode** | off |\n| **Risk Level** | high |\n",
+)
+
+
+def test_build_phase_task_review_missing_high_risk_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data_with_task_review()
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(
+        tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT_HIGH_RISK_WITH_TASK_ID
+    )
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "BR.task_review_missing" in out
+
+
+def test_build_phase_task_review_key_absent_leaves_rule_off_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_build_contracts(tmp_path / "contracts.yaml")  # no task_review key
+    report = _write_report(
+        tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT_HIGH_RISK_WITH_TASK_ID
+    )
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "VERDICT: PASS" in out
+    assert "BR.task_review_missing" not in out
+
+
+def test_build_phase_task_review_verdicts_not_a_list_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data()
+    data["task_review"] = {"verdicts": "clean"}
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT)
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err

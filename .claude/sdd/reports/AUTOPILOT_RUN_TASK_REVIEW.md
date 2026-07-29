@@ -26,6 +26,10 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T18:20Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM.* live on the v2 manifest) | PASS | 2026-07-29T18:26Z | - | - |
 | J | design | 1 | spec-judge exit 3 (daily budget) | SKIP:exit3 | 2026-07-29T18:26Z | - | - |
+| B | build | 1 | 9/9 v2-manifest tasks; suites 152 linter + 129 root; build+parity exit 0 | PASS | 2026-07-29T20:40Z | - | - |
+| R | build | 1 | Review Verdict clean-with-minors (1 Critical decoy-shadow + W1 fixed in 1/2 rounds; dual-direction repros) | PASS | 2026-07-29T20:42Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 — 9/9 review rows matched, TDD medium WARN visible | PASS | 2026-07-29T20:43Z | - | - |
+| S | ship | 1 | pre-ship checklist 6/6 | PASS | 2026-07-29T20:50Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,9 +42,9 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_TASK_REVIEW.md | e677406 — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_TASK_REVIEW.md | pending | L: PASS · J: SKIP:exit3 · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
-| Build | pending | - | - |
-| Ship | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_TASK_REVIEW.md | 239a2cc — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
+| Build | .claude/sdd/reports/BUILD_REPORT_TASK_REVIEW.md | pending | B: 9/9 (v2) · R: clean-with-minors (1/2) · L: PASS + 9/9 reviews matched |
+| Ship | .claude/sdd/archive/TASK_REVIEW/ | pending | S: 6/6 checklist |
 | PR | pending | - | - |
 
 ---

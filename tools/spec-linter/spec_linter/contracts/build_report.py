@@ -25,6 +25,18 @@ vs. non-logic changes), and stays silent for low risk or a missing Risk
 Level row — the latter is the pre-Increment-2 adoption path, not a defect.
 `BR.tdd_exception_invalid` fails every `exception: <token>` in the TDD
 Evidence section whose token is not a sanctioned exception category.
+
+A third opt-in pair — sourced from the top-level `task_review` block — is
+enabled via the constructor's `task_review_verdicts` (`None` disables both):
+`BR.task_review_missing` reuses the Risk Level token to fail high/critical
+risk (warn medium; silent on low, an unrecognized token, or a missing row)
+for every executed task (Task ID column of Task Execution) lacking a
+matching `## Task Reviews` row — a wholly absent section behaves exactly
+like an empty one, since both reduce to the same task-id set difference.
+`BR.task_review_dirty` fails every review row whose verdict is outside the
+vocabulary or equals `dirty`, at any risk level, independent of the missing
+rule's severity gate. Neither rule touches `build.execution.final_review`:
+the whole-branch final review stays mandatory regardless of task outcomes.
 """
 
 from __future__ import annotations
@@ -80,6 +92,20 @@ def _section_after(artifact: str, slug_prefix: str) -> str | None:
     return None
 
 
+def _section_exact(artifact: str, slug: str) -> str | None:
+    """Like `_section_after`, but the heading slug must EQUAL `slug` — for
+    template-fixed headings ("Task Reviews") a prefix match would let a decoy
+    ("## Task Reviews Notes") shadow the real section in either direction
+    (false FAIL on a clean report, false PASS on a dirty one)."""
+    matches = list(_H2.finditer(artifact))
+    for i, m in enumerate(matches):
+        if _slug(m.group(1)) == slug:
+            start = m.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
+            return artifact[start:end]
+    return None
+
+
 def _table_data_rows(section: str) -> int:
     rows = [m.group(0) for m in _TABLE_ROW.finditer(section)]
     data_rows = [row for row in rows if not _SEPARATOR_ROW.match(row)]
@@ -95,6 +121,9 @@ class _ParsedBuildReport:
     overall_line: str | None
     tdd_evidence_rows: int
     tdd_evidence_text: str
+    task_ids_executed: set[str]
+    task_review_rows: list[tuple[str, str]]
+    task_reviews_section_present: bool
 
 
 class BuildReportContract:
@@ -108,6 +137,7 @@ class BuildReportContract:
         legacy_level: Level,
         risk_tdd_policy: dict[str, str] | None = None,
         tdd_exception_categories: list[str] | None = None,
+        task_review_verdicts: list[str] | None = None,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -118,6 +148,7 @@ class BuildReportContract:
         self._legacy_level = legacy_level
         self._risk_tdd_policy = risk_tdd_policy
         self._tdd_exception_categories = tdd_exception_categories
+        self._task_review_verdicts = task_review_verdicts
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
@@ -142,6 +173,32 @@ class BuildReportContract:
         tdd_evidence_rows = _table_data_rows(tdd_section) if tdd_section is not None else 0
         tdd_evidence_text = tdd_section if tdd_section is not None else ""
 
+        task_ids_executed: set[str] = set()
+        for m in _NUMBERED_ROW.finditer(task_section):
+            cells = [c.strip() for c in m.group(0).strip("|").split("|")]
+            if len(cells) < 2:
+                continue
+            task_id = cells[1]
+            if task_id in ("", "-") or "{" in task_id:
+                continue
+            task_ids_executed.add(task_id)
+
+        task_reviews_section = _section_exact(artifact, "task_reviews")
+        task_reviews_section_present = task_reviews_section is not None
+        task_review_rows: list[tuple[str, str]] = []
+        if task_reviews_section is not None:
+            for m in _NUMBERED_ROW.finditer(task_reviews_section):
+                cells = [c.strip() for c in m.group(0).strip("|").split("|")]
+                # Rows with < 5 cells are dropped without a diagnostic — a
+                # disclosed residual: at low risk (missing-rule silent) a
+                # malformed short row could evade both rules.
+                if len(cells) < 5:
+                    continue
+                task_id, verdict = cells[1], cells[4].lower()
+                if "{" in task_id or "{" in verdict:
+                    continue  # unfilled template placeholder row, mirror task-id guard
+                task_review_rows.append((task_id, verdict))
+
         return _ParsedBuildReport(
             headings=headings,
             metadata=metadata,
@@ -150,6 +207,9 @@ class BuildReportContract:
             overall_line=overall_line,
             tdd_evidence_rows=tdd_evidence_rows,
             tdd_evidence_text=tdd_evidence_text,
+            task_ids_executed=task_ids_executed,
+            task_review_rows=task_review_rows,
+            task_reviews_section_present=task_reviews_section_present,
         )
 
     @staticmethod
@@ -184,6 +244,9 @@ class BuildReportContract:
             findings.extend(self._check_tdd_required_by_risk(parsed))
         if self._tdd_exception_categories is not None:
             findings.extend(self._check_tdd_exception_invalid(parsed))
+        if self._task_review_verdicts is not None:
+            findings.extend(self._check_task_review_missing(parsed))
+            findings.extend(self._check_task_review_dirty(parsed))
         return findings
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
@@ -379,15 +442,25 @@ class BuildReportContract:
             ]
         return []
 
+    @staticmethod
+    def _risk_level_token(parsed: _ParsedBuildReport) -> str | None:
+        """First whitespace-delimited token of the Risk Level metadata row,
+        lowercased; `None` when the row is absent or blank — the shared
+        silent pre-Increment-2 adoption path for every risk-gated rule
+        (`BR.tdd_required_by_risk`, `BR.task_review_missing`)."""
+        risk_row = parsed.metadata.get("risk level")
+        if not risk_row or not risk_row.strip():
+            return None
+        return risk_row.strip().split()[0].lower()
+
     def _check_tdd_required_by_risk(self, parsed: _ParsedBuildReport) -> list[Finding]:
         """Fail-closed on high/critical risk skipping TDD; WARN medium risk
         skipping TDD (judgment-scoped: logic-bearing changes only). A
         missing Risk Level row or an unrecognized level token is the
         pre-Increment-2 adoption path — silent, not a defect."""
-        risk_row = parsed.metadata.get("risk level")
-        if not risk_row or not risk_row.strip():
+        level = self._risk_level_token(parsed)
+        if level is None:
             return []
-        level = risk_row.strip().split()[0].lower()
         obligation = self._risk_tdd_policy.get(level)
         if obligation not in ("required", "required_for_logic"):
             return []
@@ -441,6 +514,75 @@ class BuildReportContract:
                     found=token,
                 )
             )
+        return findings
+
+    def _check_task_review_missing(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """Fail-closed on high/critical risk: every executed task (Task ID
+        column of Task Execution) without a matching `## Task Reviews` row
+        is one finding. WARN medium risk the same way; silent on low risk,
+        an unrecognized risk token, or a missing Risk Level row. A wholly
+        absent Task Reviews section needs no special case — `task_review_rows`
+        is already empty, so every executed task id falls out of the same
+        set difference (absence == nothing reviewed)."""
+        level = self._risk_level_token(parsed)
+        if level in ("high", "critical"):
+            severity = Level.FAIL
+        elif level == "medium":
+            severity = Level.WARN
+        else:
+            return []  # None, "low", or an unrecognized token — all silent
+        reviewed = {task_id for task_id, _ in parsed.task_review_rows}
+        return [
+            Finding(
+                level=severity,
+                rule="BR.task_review_missing",
+                field="Task Reviews",
+                message=(
+                    f"task '{task_id}' has no Task Reviews row — Risk Level "
+                    f"'{level}' requires a per-task review "
+                    "(WORKFLOW_CONTRACTS.yaml -> task_review.enforcement)"
+                ),
+                expected="a Task Reviews row for every executed task",
+                found="absent",
+            )
+            for task_id in sorted(parsed.task_ids_executed - reviewed)
+        ]
+
+    def _check_task_review_dirty(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """Every Task Reviews row is checked regardless of risk level or the
+        missing-rule's severity gate: an invalid verdict token FAILs (not in
+        the contract's vocabulary), and verdict `dirty` FAILs outright —
+        dependents built on dirty work must not ship."""
+        findings: list[Finding] = []
+        for task_id, verdict in parsed.task_review_rows:
+            if verdict not in self._task_review_verdicts:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="BR.task_review_dirty",
+                        field="Task Reviews",
+                        message=(
+                            f"task '{task_id}' review verdict '{verdict}' is not "
+                            "one of the contract's allowed values"
+                        ),
+                        expected=" | ".join(self._task_review_verdicts),
+                        found=verdict,
+                    )
+                )
+            elif verdict == "dirty":
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="BR.task_review_dirty",
+                        field="Task Reviews",
+                        message=(
+                            f"task '{task_id}' review verdict is 'dirty' — "
+                            "dependents built on dirty work must not ship"
+                        ),
+                        expected="clean | clean-with-minors | skipped-by-policy",
+                        found="dirty",
+                    )
+                )
         return findings
 
     def _check_tasks_incomplete(self, parsed: _ParsedBuildReport) -> list[Finding]:

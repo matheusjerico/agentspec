@@ -9,7 +9,7 @@
 | **Feature** | TASK_REVIEW |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** plan §11 (flow §11.2, blind-first §11.3, cost control §11.4, acceptance §11.6), §18 PR 5 scope ("initially high/critical; medium enters in Warn"). Phase 0 carried by the ratified plan (benchmark: Superpowers' incremental reviews caught defects the final pass then didn't have to). Consumes Increment 2's risk level, Increment 3's manifest `reviewer`/`risk`, Increment 4's per-risk policy precedent.
@@ -207,4 +207,4 @@ None blocking — ready for Design. Deferred *how*: exact Task Reviews table col
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TASK_REVIEW.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TASK_REVIEW.md`
