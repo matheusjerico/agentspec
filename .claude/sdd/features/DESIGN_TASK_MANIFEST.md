@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_TASK_MANIFEST.md](./DEFINE_TASK_MANIFEST.md) |
 | **Risk Level** | medium (echo from DEFINE — blast_radius medium: design-lint path + two skills; no elevation floor) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Complete (Built) |
 | **Design Confidence** | 0.90 — third phase-contract of the established pattern; KB `python`/`testing` |
 
 ---
@@ -435,4 +435,4 @@ Not applicable.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TASK_MANIFEST.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TASK_MANIFEST.md`

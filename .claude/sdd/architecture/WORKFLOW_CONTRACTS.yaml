@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.9.0
+# Version: 3.10.0
 # Date: 2026-07-29
 
-version: "3.9.0"
+version: "3.10.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -446,6 +446,25 @@ risk_profiles:
   legacy:
     effective_level: medium
     mode: WARN                   # never a silent low
+
+# Executable task manifest v2 (Increment 3 — opt-in, fail-closed for adopters).
+# Declared by sdd-design in the DESIGN's "Task Manifest (v2)" section, validated
+# by spec-lint --phase design (DesignPhaseContract, TM.* rules), consumed by
+# sdd-build (explicit graph, no inference). A DESIGN without the block is v1:
+# zero TM findings, Build infers tasks as before.
+task_manifest:
+  manifest_version: 2
+  adoption: "opt-in — a DESIGN without the block is v1: zero TM findings, Build infers as today"
+  required_task_fields: [id, title, files, verification]
+  files_keys: [create, modify, tests]
+  verification_keys: [red, green, regression]
+  rules:
+    # Documentation of the severity assignment (anchored by tests) — the
+    # severities are implemented in DesignPhaseContract; editing these lists
+    # alone does not change linter behavior.
+    blocking: [unparseable, duplicate_id, cycle, unknown_dependency, write_conflict, missing_verification]
+    advisory: [missing_requirements]   # traceability matrix is Increment 6
+  write_conflict: "same parallel_group with intersecting create+modify sets"
 
 
 # =============================================================================
@@ -896,6 +915,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.10.0"
+    date: "2026-07-29"
+    changes:
+      - "TASK_MANIFEST (Increment 3, opt-in): new top-level task_manifest block — manifest_version 2 schema vocabularies (required task fields id/title/files/verification, files keys, verification keys red/green/regression), blocking rules (unparseable, duplicate_id, cycle, unknown_dependency, write_conflict, missing_verification) and advisory missing_requirements as data. spec-lint --phase design routes to DesignPhaseContract when the block exists (section presence byte-identical to SddPhaseContract; TM.* FAIL rules apply ONLY when a DESIGN declares a v2 manifest — absent manifest is v1 with zero findings; silent fallback without the contracts block). DESIGN template gains the Task Manifest (v2) section; sdd-design derives tasks + size budget; sdd-build consumes the explicit graph in topological order (no inference) and records Task ID per row (new BUILD_REPORT column); v1 designs keep inference with manifest_version: 1 noted. Parallel DISPATCH deferred to Increment 7."
+
   - version: "3.9.0"
     date: "2026-07-29"
     changes:

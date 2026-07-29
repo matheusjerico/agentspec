@@ -87,6 +87,42 @@
 
 ---
 
+## Task Manifest (v2)
+
+> Derived from the file manifest (sdd-design): a task is a verifiable change,
+> not necessarily one file. Every task carries ≥1 verification command;
+> dependencies form a DAG; tasks in the same `parallel_group` never write the
+> same file. Declared, never embedded — no full implementations in the plan.
+> Validated by `spec-lint --phase design` (TM.* rules — blocking for v2
+> adopters). Omit this section entirely for a v1 design (Build then infers
+> tasks as before).
+
+```yaml
+task_manifest:
+  manifest_version: 2
+  tasks:
+    - id: TASK-{AREA}-001
+      title: {what this task delivers}
+      requirements: [{REQ or MUST refs from the DEFINE}]
+      depends_on: []
+      files:
+        create: [{paths}]
+        modify: [{paths}]
+        tests: [{test paths}]
+      owner: "@{agent-name} or (general)"
+      reviewer: "@code-reviewer"
+      risk: {low / medium / high / critical}
+      execution: { tdd: {off / opt-in / required}, parallel_group: {group}, commit: "{conventional commit message}" }
+      acceptance:
+        - "{testable statement}"
+      verification:
+        red: "{command that must fail before implementation — TDD runs}"
+        green: "{command that must pass after}"
+        regression: "{wider suite command}"
+```
+
+---
+
 ## Agent Assignment Rationale
 
 > Agents discovered from `${CLAUDE_PLUGIN_ROOT}/agents/` - Build phase invokes matched specialists.

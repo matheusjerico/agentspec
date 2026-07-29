@@ -9,7 +9,7 @@
 | **Feature** | TASK_MANIFEST |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Complete (Built) |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/plans/2026-07-29-agentspec-incremental-improvements.md` — Increment 3 (§9), PR 3 scope §18 ("versioned schema and v1 adapter"), dependency tree §19. Phase 0 carried by the ratified plan (benchmark evidence §3: Superpowers' smaller, explicit tasks; YAGNI §21). Full parallel-dispatch policy explicitly deferred to Increment 7.
@@ -213,4 +213,4 @@ None blocking — ready for Design. One *how* decision deferred to Design: wheth
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TASK_MANIFEST.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TASK_MANIFEST.md`

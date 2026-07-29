@@ -73,8 +73,19 @@ the KB domains to load.
 
 ### Step 2: Extract Tasks from the File Manifest
 
-Convert the manifest to a task list — tasks are generated on-the-fly, not
-pre-written:
+**v2 manifest first (contract: `WORKFLOW_CONTRACTS.yaml` → `task_manifest`):**
+when the DESIGN carries a `Task Manifest (v2)` section (`task_manifest` YAML,
+`manifest_version: 2`), consume the declared tasks verbatim — NO inference.
+The graph was validated at Design (`spec-lint --phase design`, TM.* rules);
+execute tasks in topological order of `depends_on`, honor each task's
+`owner`/`verification` commands, and record its `id` in the BUILD_REPORT
+Task Execution table (the Task ID column). Dispatch remains sequential this
+increment — `parallel_group` is declared data until the scheduling increment
+lands.
+
+**v1 fallback (no manifest):** convert the file manifest to a task list
+on-the-fly, exactly as before, and record `manifest_version: 1` in the report
+notes:
 
 ```markdown
 From DESIGN file manifest:

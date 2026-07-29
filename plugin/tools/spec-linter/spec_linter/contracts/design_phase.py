@@ -1,0 +1,514 @@
+"""Design-phase contract (loaded as data).
+
+Built from `design.required_sections` (FAIL semantics, unchanged) and the
+top-level `task_manifest` block of WORKFLOW_CONTRACTS.yaml, validates a
+DESIGN_{FEATURE}.md against structural section presence plus semantic `TM.*`
+executable-task-manifest rules. WHAT is checked — the section list, the
+required task fields, the files/verification key vocabularies — is data
+handed in by the caller; severity is this contract's own choice.
+
+The v2 task manifest is opt-in: a DESIGN with no `## Task Manifest (v2)`
+section (or a section with no ```yaml fence) is v1 — ZERO `TM.*` findings,
+never a WARN. This is not an observe/warn rollout like risk_profiles; it is a
+silence contract. But once a DESIGN DOES declare a manifest, every `TM.*`
+rule below is `Level.FAIL` except `TM.missing_requirements` — fail-closed for
+adopters, because an executable plan that is malformed (unparseable, a cycle,
+a write conflict, an unverifiable task) must not reach Build. A fence that
+exists but fails to parse — or parses to something that is not a mapping —
+is `manifest_broken`, distinct from an absent manifest: broken is FAIL
+(`TM.unparseable`), absent is v1-silent.
+
+`L2.required_section` keeps its existing FAIL semantics, exactly mirroring
+`SddPhaseContract` — this preserves current exit-1 behavior for missing
+required sections; the Task Manifest section itself is deliberately NOT one
+of them (the manifest stays opt-in).
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+import yaml
+
+from ..verdict import Finding, Level
+
+# Two deliberately different heading vocabularies:
+# - Section PRESENCE uses any ATX level (#{1,6}) — mirroring SddPhaseContract
+#   exactly, so routing design to this contract changes NO existing FAIL
+#   behavior for section presence.
+# - The Task Manifest SCAN is ##-only: the template places it at `##`, and
+#   this restriction keeps the section-scoping unambiguous with the
+#   `_section_after` slicing below.
+_HEADING = re.compile(r"^#{1,6}\s+(.*\S)\s*$", re.MULTILINE)
+_H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
+_YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def _candidate_sections(artifact: str, slug_prefix: str) -> list[str]:
+    """Every `##` section whose heading slug starts with `slug_prefix`, in
+    document order — ALL candidates, not just the first: a fence-less decoy
+    ("## Task Manifest Notes") must never shadow the real manifest section."""
+    matches = list(_H2.finditer(artifact))
+    sections: list[str] = []
+    for i, m in enumerate(matches):
+        if _slug(m.group(1)).startswith(slug_prefix):
+            start = m.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
+            sections.append(artifact[start:end])
+    return sections
+
+
+def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
+    """The `task_manifest` mapping from the first candidate section that
+    carries a ```yaml fence, plus a `broken` flag.
+
+    Candidate sections are scanned in order; the FIRST one containing a yaml
+    fence decides (fence-less candidates — prose "Notes" sections — are
+    skipped, never shadowing the real manifest). Returns `(None, False)` when
+    no candidate carries a fence — the v1-silent case. Returns `(None, True)`
+    when the deciding fence fails to parse, its top level isn't a mapping, or
+    the `task_manifest` key isn't itself a mapping — the broken case (FAIL,
+    distinct from absent; fail-closed for adopters). This parser never
+    raises."""
+    for section in _candidate_sections(artifact, "task_manifest"):
+        fence = _YAML_FENCE.search(section)
+        if fence is None:
+            continue
+        try:
+            document = yaml.safe_load(fence.group(1))
+        except yaml.YAMLError:
+            # Unparseable YAML under a Task Manifest heading: fail closed —
+            # its keys cannot be inspected, so it may be the real manifest.
+            return None, True
+        if not isinstance(document, dict) or "task_manifest" not in document:
+            # An unrelated example fence (no task_manifest key) never decides —
+            # keep scanning so it cannot shadow a valid manifest further down.
+            continue
+        manifest = document["task_manifest"]
+        if not isinstance(manifest, dict):
+            return None, True
+        return manifest, False
+    return None, False
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedDesignPhase:
+    headings: set[str]
+    manifest: dict | None
+    manifest_broken: bool
+
+
+class DesignPhaseContract:
+    def __init__(
+        self,
+        required_sections: list[str],
+        required_task_fields: list[str],
+        files_keys: list[str],
+        verification_keys: list[str],
+    ) -> None:
+        self.name = "sdd-phase:design"
+        self._required = required_sections
+        self._required_task_fields = required_task_fields
+        self._files_keys = files_keys
+        self._verification_keys = verification_keys
+
+    def parse(self, artifact: str) -> _ParsedDesignPhase:
+        headings = {_slug(m.group(1)) for m in _HEADING.finditer(artifact)}
+        manifest, broken = _parse_manifest(artifact)
+        return _ParsedDesignPhase(
+            headings=headings, manifest=manifest, manifest_broken=broken
+        )
+
+    def check(self, parsed: _ParsedDesignPhase) -> list[Finding]:
+        findings = self._check_required_sections(parsed)
+
+        if parsed.manifest_broken:
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="TM.unparseable",
+                    field="Task Manifest (v2)",
+                    message=(
+                        "Task Manifest section carries a ```yaml fence that fails "
+                        "to parse into a task_manifest mapping — an executable "
+                        "plan that cannot parse must not reach Build"
+                    ),
+                    expected="valid YAML with a task_manifest mapping",
+                    found="unparseable",
+                )
+            )
+            return findings
+
+        if parsed.manifest is None:
+            return findings
+
+        findings.extend(self._check_manifest(parsed.manifest))
+        return findings
+
+    def _check_required_sections(self, parsed: _ParsedDesignPhase) -> list[Finding]:
+        findings: list[Finding] = []
+        for section in self._required:
+            if _slug(section) not in parsed.headings:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="L2.required_section",
+                        field=section,
+                        message=f"required section '{section}' is missing",
+                        expected="section present as a heading",
+                        found="absent",
+                    )
+                )
+        return findings
+
+    def _check_manifest(self, manifest: dict) -> list[Finding]:
+        tasks = manifest.get("tasks")
+        if not isinstance(tasks, list) or not tasks:
+            found = "absent" if tasks is None else ("empty" if not tasks else str(tasks))
+            return [
+                Finding(
+                    level=Level.FAIL,
+                    rule="TM.invalid_task",
+                    field="tasks",
+                    message="v2 manifest declares no tasks",
+                    expected="tasks: a non-empty list of task mappings",
+                    found=found,
+                )
+            ]
+
+        findings: list[Finding] = []
+        by_id: dict[str, list[dict]] = {}
+        labels: dict[int, str] = {}
+        for index, task in enumerate(tasks):
+            if not isinstance(task, dict):
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"tasks[{index}]",
+                        message=f"task at index {index} is not a mapping",
+                        expected="a task mapping",
+                        found=str(task),
+                    )
+                )
+                continue
+            task_id = task.get("id")
+            has_id = isinstance(task_id, str) and task_id
+            label = task_id if has_id else f"index {index}"
+            labels[index] = label
+            if has_id:
+                by_id.setdefault(task_id, []).append(task)
+
+        findings.extend(self._check_duplicate_ids(by_id))
+
+        valid_tasks = [
+            (index, task) for index, task in enumerate(tasks) if isinstance(task, dict)
+        ]
+        for index, task in valid_tasks:
+            findings.extend(self._check_task_fields(labels[index], task))
+
+        known_ids = set(by_id.keys())
+        for index, task in valid_tasks:
+            findings.extend(self._check_dependencies(labels[index], task, known_ids))
+
+        # Duplicated ids already FAIL above; feeding them to the graph rules
+        # would union their depends_on edges and emit misleading cycles.
+        duplicated_ids = {tid for tid, occ in by_id.items() if len(occ) > 1}
+        graph_tasks = [
+            (index, task)
+            for index, task in valid_tasks
+            if task.get("id") not in duplicated_ids
+        ]
+        findings.extend(self._check_cycle(graph_tasks, known_ids - duplicated_ids))
+        findings.extend(self._check_write_conflicts(graph_tasks, labels))
+
+        for index, task in valid_tasks:
+            findings.extend(self._check_requirements(labels[index], task))
+
+        return findings
+
+    def _check_duplicate_ids(self, by_id: dict[str, list[dict]]) -> list[Finding]:
+        findings: list[Finding] = []
+        for task_id, occurrences in by_id.items():
+            if len(occurrences) > 1:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.duplicate_id",
+                        field=task_id,
+                        message=(
+                            f"task id '{task_id}' is declared by "
+                            f"{len(occurrences)} tasks"
+                        ),
+                        expected="each task id unique",
+                        found=f"{len(occurrences)} declarations",
+                    )
+                )
+        return findings
+
+    def _check_task_fields(self, label: str, task: dict) -> list[Finding]:
+        findings: list[Finding] = []
+        for field in self._required_task_fields:
+            value = task.get(field)
+            # id/title must be non-empty strings — a numeric `id: 42` would
+            # otherwise pass presence yet silently drop out of the graph.
+            if field in ("id", "title") and field in task and not isinstance(value, str):
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"{label}.{field}",
+                        message=f"task '{label}' field '{field}' must be a string",
+                        expected="a non-empty string",
+                        found=str(value),
+                    )
+                )
+                continue
+            if field in task and value not in (None, "", [], {}):
+                continue
+            if field == "verification":
+                findings.append(self._missing_verification_finding(label, "absent"))
+            else:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"{label}.{field}",
+                        message=f"task '{label}' is missing required field '{field}'",
+                        expected=", ".join(self._required_task_fields),
+                        found="absent",
+                    )
+                )
+
+        if "files" in task:
+            findings.extend(self._check_files(label, task.get("files")))
+
+        verification = task.get("verification")
+        if "verification" in task and verification not in (None, "", [], {}):
+            findings.extend(self._check_verification(label, verification))
+
+        return findings
+
+    def _missing_verification_finding(self, label: str, found: str) -> Finding:
+        return Finding(
+            level=Level.FAIL,
+            rule="TM.missing_verification",
+            field=f"{label}.verification",
+            message=(
+                f"task '{label}' carries no non-empty verification value under "
+                f"{', '.join(self._verification_keys)}"
+            ),
+            expected=" | ".join(self._verification_keys),
+            found=found,
+        )
+
+    def _check_files(self, label: str, files: object) -> list[Finding]:
+        if not isinstance(files, dict):
+            return [
+                Finding(
+                    level=Level.FAIL,
+                    rule="TM.invalid_task",
+                    field=f"{label}.files",
+                    message=f"task '{label}' field 'files' is not a mapping",
+                    expected="mapping of " + ", ".join(self._files_keys),
+                    found=str(files),
+                )
+            ]
+        findings: list[Finding] = []
+        for key, value in files.items():
+            if key not in self._files_keys:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"{label}.files.{key}",
+                        message=f"task '{label}' files key '{key}' is not recognized",
+                        expected=", ".join(self._files_keys),
+                        found=str(key),
+                    )
+                )
+                continue
+            is_str_list = isinstance(value, list) and all(
+                isinstance(v, str) for v in value
+            )
+            if not is_str_list:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"{label}.files.{key}",
+                        message=f"task '{label}' files.{key} must be a list of strings",
+                        expected="list of strings",
+                        found=str(value),
+                    )
+                )
+        return findings
+
+    def _check_verification(self, label: str, verification: object) -> list[Finding]:
+        if not isinstance(verification, dict):
+            return [
+                Finding(
+                    level=Level.FAIL,
+                    rule="TM.invalid_task",
+                    field=f"{label}.verification",
+                    message=f"task '{label}' field 'verification' is not a mapping",
+                    expected="mapping of " + ", ".join(self._verification_keys),
+                    found=str(verification),
+                )
+            ]
+        findings: list[Finding] = []
+        has_value = False
+        for key, value in verification.items():
+            if key not in self._verification_keys:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.invalid_task",
+                        field=f"{label}.verification.{key}",
+                        message=(
+                            f"task '{label}' verification key '{key}' is not "
+                            "recognized"
+                        ),
+                        expected=", ".join(self._verification_keys),
+                        found=str(key),
+                    )
+                )
+                continue
+            if isinstance(value, str) and value.strip():
+                has_value = True
+        if not has_value:
+            findings.append(self._missing_verification_finding(label, str(verification)))
+        return findings
+
+    def _check_dependencies(
+        self, label: str, task: dict, known_ids: set[str]
+    ) -> list[Finding]:
+        depends_on = task.get("depends_on")
+        if not isinstance(depends_on, list):
+            return []
+        findings: list[Finding] = []
+        for dep in depends_on:
+            if not isinstance(dep, str) or dep not in known_ids:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.unknown_dependency",
+                        field=f"{label}.depends_on",
+                        message=f"task '{label}' depends_on unknown id '{dep}'",
+                        expected="a declared task id",
+                        found=str(dep),
+                    )
+                )
+        return findings
+
+    def _check_cycle(
+        self, valid_tasks: list[tuple[int, dict]], known_ids: set[str]
+    ) -> list[Finding]:
+        edges: dict[str, set[str]] = {task_id: set() for task_id in known_ids}
+        for _, task in valid_tasks:
+            task_id = task.get("id")
+            if not isinstance(task_id, str) or task_id not in known_ids:
+                continue
+            depends_on = task.get("depends_on")
+            if not isinstance(depends_on, list):
+                continue
+            for dep in depends_on:
+                if isinstance(dep, str) and dep in known_ids:
+                    edges[task_id].add(dep)
+
+        # Kahn's algorithm: an edge task_id -> dep means dep must run first,
+        # so in-degree counts how many OTHER ids still depend on this one.
+        in_degree: dict[str, int] = {task_id: 0 for task_id in known_ids}
+        for task_id, deps in edges.items():
+            for dep in deps:
+                in_degree[dep] += 1
+
+        queue = sorted(task_id for task_id, degree in in_degree.items() if degree == 0)
+        processed: set[str] = set()
+        while queue:
+            current = queue.pop(0)
+            processed.add(current)
+            for dep in edges[current]:
+                in_degree[dep] -= 1
+                if in_degree[dep] == 0 and dep not in processed:
+                    queue.append(dep)
+            queue.sort()
+
+        remainder = sorted(known_ids - processed)
+        if not remainder:
+            return []
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="TM.cycle",
+                field="depends_on",
+                message=f"dependency cycle among tasks: {', '.join(remainder)}",
+                expected="a DAG (no cycles)",
+                found=", ".join(remainder),
+            )
+        ]
+
+    def _check_write_conflicts(
+        self, valid_tasks: list[tuple[int, dict]], labels: dict[int, str]
+    ) -> list[Finding]:
+        groups: dict[str, list[tuple[str, set[str]]]] = {}
+        for index, task in valid_tasks:
+            execution = task.get("execution")
+            group = (
+                execution.get("parallel_group") if isinstance(execution, dict) else None
+            )
+            if not isinstance(group, str) or not group:
+                continue
+            label = labels[index]
+            files = task.get("files")
+            write_set: set[str] = set()
+            if isinstance(files, dict):
+                for key in ("create", "modify"):
+                    value = files.get(key)
+                    if isinstance(value, list):
+                        write_set.update(v for v in value if isinstance(v, str))
+            groups.setdefault(group, []).append((label, write_set))
+
+        findings: list[Finding] = []
+        for group, entries in groups.items():
+            for i in range(len(entries)):
+                for j in range(i + 1, len(entries)):
+                    label_a, files_a = entries[i]
+                    label_b, files_b = entries[j]
+                    overlap = sorted(files_a & files_b)
+                    if overlap:
+                        findings.append(
+                            Finding(
+                                level=Level.FAIL,
+                                rule="TM.write_conflict",
+                                field=group,
+                                message=(
+                                    f"tasks '{label_a}' and '{label_b}' in "
+                                    f"parallel_group '{group}' write to "
+                                    f"overlapping files: {', '.join(overlap)}"
+                                ),
+                                expected="disjoint create+modify within a parallel_group",
+                                found=", ".join(overlap),
+                            )
+                        )
+        return findings
+
+    def _check_requirements(self, label: str, task: dict) -> list[Finding]:
+        requirements = task.get("requirements")
+        if isinstance(requirements, list) and requirements:
+            return []
+        return [
+            Finding(
+                level=Level.WARN,
+                rule="TM.missing_requirements",
+                field=f"{label}.requirements",
+                message=f"task '{label}' carries no requirements traceability",
+                expected="non-empty list of requirement ids",
+                found="absent" if requirements is None else str(requirements),
+            )
+        ]

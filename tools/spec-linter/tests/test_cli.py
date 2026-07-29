@@ -548,3 +548,174 @@ def test_define_phase_legacy_level_outside_levels_is_error_exit_two(tmp_path, ca
     doc = tmp_path / "DEFINE_X.md"
     doc.write_text(_VALID_DEFINE_DOC)
     assert cli.main([str(doc), "--phase", "define", "--contracts-file", str(contracts)]) == 2
+
+
+# --- --phase design (DesignPhaseContract) ------------------------------------
+
+
+_DESIGN_REQUIRED_SECTIONS = [
+    "architecture_overview",
+    "components",
+    "key_decisions",
+    "file_manifest",
+    "code_patterns",
+    "testing_strategy",
+]
+
+
+def _design_contracts_data() -> dict[str, Any]:
+    return {
+        "design": {"required_sections": _DESIGN_REQUIRED_SECTIONS},
+        "task_manifest": {
+            "manifest_version": 2,
+            "required_task_fields": ["id", "title", "files", "verification"],
+            "files_keys": ["create", "modify", "tests"],
+            "verification_keys": ["red", "green", "regression"],
+        },
+    }
+
+
+def _write_design_contracts(path: Path) -> Path:
+    path.write_text(yaml.safe_dump(_design_contracts_data()))
+    return path
+
+
+def _write_design_doc(path: Path, text: str) -> Path:
+    path.write_text(text)
+    return path
+
+
+_VALID_DESIGN_DOC = """\
+# DESIGN: CLI_SAMPLE
+
+## Architecture Overview
+
+Sample architecture overview.
+
+## Components
+
+Sample components.
+
+## Key Decisions
+
+Sample key decisions.
+
+## File Manifest
+
+Sample file manifest.
+
+## Task Manifest (v2)
+
+```yaml
+task_manifest:
+  manifest_version: 2
+  tasks:
+    - id: TASK-A
+      title: Implement module A
+      requirements: ["REQ-1"]
+      depends_on: []
+      files:
+        create: ["fileA.py"]
+        modify: []
+        tests: ["test_fileA.py"]
+      verification:
+        green: "pytest tests/test_fileA.py"
+    - id: TASK-B
+      title: Implement module B
+      requirements: ["REQ-2"]
+      depends_on: ["TASK-A"]
+      files:
+        create: ["fileB.py"]
+        modify: []
+        tests: ["test_fileB.py"]
+      verification:
+        green: "pytest tests/test_fileB.py"
+```
+
+## Code Patterns
+
+Sample code patterns.
+
+## Testing Strategy
+
+Sample testing strategy.
+"""
+
+
+def _design_doc_without_manifest() -> str:
+    """`_VALID_DESIGN_DOC` with its `## Task Manifest (v2)` section removed —
+    every required section still present, no v2 manifest block at all."""
+    start = _VALID_DESIGN_DOC.index("## Task Manifest (v2)")
+    end = _VALID_DESIGN_DOC.index("## Code Patterns")
+    return _VALID_DESIGN_DOC[:start] + _VALID_DESIGN_DOC[end:]
+
+
+def _design_doc_with_cycle() -> str:
+    """`_VALID_DESIGN_DOC` with TASK-A also depending on TASK-B — a two-task
+    dependency cycle."""
+    return _VALID_DESIGN_DOC.replace(
+        "      depends_on: []\n", '      depends_on: ["TASK-B"]\n'
+    )
+
+
+def test_design_phase_valid_v2_doc_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_design_contracts(tmp_path / "contracts.yaml")
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _VALID_DESIGN_DOC)
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 0
+    assert "VERDICT: PASS" in capsys.readouterr().out
+
+
+def test_design_phase_cycle_doc_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_design_contracts(tmp_path / "contracts.yaml")
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _design_doc_with_cycle())
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "TM.cycle" in out
+
+
+def test_design_phase_without_manifest_section_exits_zero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_design_contracts(tmp_path / "contracts.yaml")
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _design_doc_without_manifest())
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 0
+    assert "VERDICT: PASS" in capsys.readouterr().out
+
+
+def test_design_phase_falls_back_to_plain_contract_without_task_manifest_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _design_contracts_data()
+    del data["task_manifest"]
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    # Even a doc that WOULD cycle under a v2 manifest exits 0 here: without
+    # the `task_manifest` key, `--phase design` falls back silently to the
+    # plain `SddPhaseContract` — only required_sections are checked.
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _design_doc_with_cycle())
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "VERDICT: PASS" in out
+    assert "TM." not in out
+
+
+def test_design_phase_required_task_fields_not_a_list_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _design_contracts_data()
+    data["task_manifest"]["required_task_fields"] = "id"
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _VALID_DESIGN_DOC)
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err

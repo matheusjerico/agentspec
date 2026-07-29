@@ -24,6 +24,14 @@ subkeys are an operational ERROR (exit 2), never a verdict. When
 back silently to the plain `SddPhaseContract` path — backward compatible
 with contracts files that predate the risk-profile rollout.
 
+`--phase design` follows the same conditional shape: when the loaded
+contracts data carries a top-level `task_manifest` mapping, it runs a
+`DesignPhaseContract` instead, layering FAIL-level `TM.*` executable-manifest
+rules (opt-in per DESIGN document — absent v2 block is v1-silent, zero `TM.*`
+findings) on top of `L2.required_section`; malformed `task_manifest` subkeys
+are an operational ERROR (exit 2). Absent `task_manifest` falls back silently
+to `SddPhaseContract`, identical to the define/risk_profiles pattern.
+
 Exit codes form a three-way contract:
 
 - 0 — PASS or WARN verdict.
@@ -48,6 +56,7 @@ from . import rules
 from .contracts.agent_spec import AgentSpecContract, emit_json_schema
 from .contracts.build_report import BuildReportContract
 from .contracts.define_phase import DefinePhaseContract
+from .contracts.design_phase import DesignPhaseContract
 from .contracts.sdd_phase import SddPhaseContract
 from .engine import lint
 from .protocol import Contract
@@ -267,6 +276,42 @@ def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> Define
     )
 
 
+def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> DesignPhaseContract:
+    """Assemble the design-phase contract from `design.required_sections` plus
+    the top-level `task_manifest` block of already-loaded contracts data,
+    mirroring `_define_phase_contract`'s validation style for every piece it
+    needs."""
+    required = _phase_required_sections("design", data, contracts_file)
+    block = data["task_manifest"]
+
+    required_task_fields = block.get("required_task_fields")
+    if not isinstance(required_task_fields, list) or not all(
+        isinstance(v, str) for v in required_task_fields
+    ):
+        raise _OperationalError(
+            f"task_manifest.required_task_fields must be a list of strings in {contracts_file.name}"
+        )
+    files_keys = block.get("files_keys")
+    if not isinstance(files_keys, list) or not all(isinstance(v, str) for v in files_keys):
+        raise _OperationalError(
+            f"task_manifest.files_keys must be a list of strings in {contracts_file.name}"
+        )
+    verification_keys = block.get("verification_keys")
+    if not isinstance(verification_keys, list) or not all(
+        isinstance(v, str) for v in verification_keys
+    ):
+        raise _OperationalError(
+            f"task_manifest.verification_keys must be a list of strings in {contracts_file.name}"
+        )
+
+    return DesignPhaseContract(
+        required_sections=required,
+        required_task_fields=required_task_fields,
+        files_keys=files_keys,
+        verification_keys=verification_keys,
+    )
+
+
 def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) -> Level:
     """Lint a Markdown phase document against its phase contract."""
     data = _load_contracts_data(contracts_file)
@@ -275,6 +320,8 @@ def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) 
         contract = _build_report_contract(data, contracts_file, legacy_mode)
     elif phase == "define" and isinstance(data.get("risk_profiles"), dict):
         contract = _define_phase_contract(data, contracts_file)
+    elif phase == "design" and isinstance(data.get("task_manifest"), dict):
+        contract = _design_phase_contract(data, contracts_file)
     else:
         required = _phase_required_sections(phase, data, contracts_file)
         contract = SddPhaseContract(phase, required)

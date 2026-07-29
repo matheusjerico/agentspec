@@ -168,6 +168,25 @@ Before finalizing the manifest, load `.claude/skills/specialist-autoprovision/SK
 
 Record every citation in the Agent Assignment Rationale table; record every provisioning event per the skill's provenance shape. That skill owns the match semantics and sub-flow; this step only invokes it.
 
+### Step 4.7: Derive the Task Manifest (v2)
+
+Convert the finalized file manifest into an executable task manifest (template
+section "Task Manifest (v2)"; schema vocabularies in `WORKFLOW_CONTRACTS.yaml`
+→ `task_manifest`):
+
+- A task is a **verifiable change** — one coherent delta, not necessarily one
+  file; every task carries ≥1 `verification` command (`red`/`green`/
+  `regression`) and references the DEFINE requirements it serves.
+- `depends_on` must form a DAG; tasks sharing a `parallel_group` must have
+  disjoint `create`+`modify` write-sets (dispatching in parallel is a later
+  increment — the declaration and its validation land here).
+- **Size budget (declare, never embed):** the manifest carries commands and
+  paths, never full implementations; an exceptionally large design records an
+  explicit justification in its decisions.
+- `spec-lint --phase design` validates the manifest (TM.* rules, blocking for
+  v2 adopters). Omitting the section is valid: the design is v1 and Build
+  infers tasks as before.
+
 ### Step 5: Define Code Patterns
 
 1. Load patterns from the KB domains
@@ -230,6 +249,7 @@ PRE-FLIGHT CHECK
 ├─ [ ] ASCII architecture diagram created and clear
 ├─ [ ] At least one decision with full rationale (inline ADR)
 ├─ [ ] Complete file manifest (all files listed)
+├─ [ ] Task Manifest v2 derived (DAG, verification commands, disjoint write-sets) — or v1 explicitly chosen
 ├─ [ ] Agent assigned to each file (or marked general)
 ├─ [ ] Every manifest row carries a citation — gaps resolved via specialist-autoprovision
 ├─ [ ] Code patterns are syntactically correct and copy-paste ready
