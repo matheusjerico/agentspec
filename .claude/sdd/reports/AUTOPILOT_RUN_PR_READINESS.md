@@ -13,7 +13,7 @@
 | **DEFINE (input)** | .claude/sdd/features/DEFINE_PR_READINESS.md |
 | **Flags** | none |
 | **Branch** | feat/auto-pr-readiness |
-| **Status** | 🔄 In Progress |
+| **Status** | ✅ Success (PR: https://github.com/matheusjerico/agentspec/pull/12) |
 
 ---
 
@@ -30,6 +30,7 @@
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (1 WARN: medium risk + TDD off, expected) | PASS | 2026-07-29T21:10Z | - | - |
 | B | build | 1 | BUILD_REPORT complete; suites 162 root + 172 spec-linter; plugin build + Step 5e parity exit 0 | PASS | 2026-07-29T21:10Z | - | - |
 | S | ship | 1 | pre-ship checklist: report Complete, verdict clean-with-minors, 334/334 green, statuses Shipped; PR_READY generated (13/13 ✅, Gaps: None) | PASS | 2026-07-29T21:20Z | - | - |
+| PR | pr | 1 | mutable subset revalidated (tree clean, merge-tree conflict-free, 162+172 green, build exit 0, docs-only drift); PR #12 opened from the artifact | PASS | 2026-07-29T21:30Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -44,8 +45,8 @@
 | Ignition | .claude/sdd/features/DEFINE_PR_READINESS.md | 5528617 — ignition | I: re-score 15/15 |
 | Design | .claude/sdd/features/DESIGN_PR_READINESS.md | 8be3cc3 — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
 | Build | .claude/sdd/archive/PR_READINESS/BUILD_REPORT_PR_READINESS.md | 870a904 — build complete | R: clean-with-minors · L: PASS · B: PASS |
-| Ship | .claude/sdd/archive/PR_READINESS/SHIPPED_2026-07-29.md | pending (this commit) | S: PASS · PR_READY generated |
-| PR | pending | - | - |
+| Ship | .claude/sdd/archive/PR_READINESS/SHIPPED_2026-07-29.md | 1a6f0b5 — ship | S: PASS · PR_READY generated |
+| PR | https://github.com/matheusjerico/agentspec/pull/12 | this commit — close run | PR: PASS (artifact consumed, deleted here) |
 
 ---
 
@@ -87,7 +88,7 @@ N/A
 
 | Tier | Target | Result |
 |------|--------|--------|
-| Terminal summary | stdout | pending |
+| Terminal summary | stdout | delivered |
 | OS notification | n/a (interactive entrypoint) | - |
 | Webhook | not configured | - |
 
@@ -97,12 +98,12 @@ N/A
 
 | Metric | Value |
 |--------|-------|
-| **Terminal Status** | 🔄 In Progress |
-| **Phases Completed** | 0/5 (ignition · design · build · ship · PR) |
-| **Gates Evaluated** | 1 (1 PASS) |
+| **Terminal Status** | ✅ Success |
+| **Phases Completed** | 5/5 (ignition · design · build · ship · PR) |
+| **Gates Evaluated** | 7 (6 PASS, 1 SKIP:exit3) |
 | **Total Regenerations** | 0 |
 | **Human Interactions** | 0 |
-| **PR** | - |
+| **PR** | https://github.com/matheusjerico/agentspec/pull/12 |
 | **Manual Follow-up** | - |
 
 ---
