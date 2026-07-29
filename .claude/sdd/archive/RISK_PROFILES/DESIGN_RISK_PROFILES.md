@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_RISK_PROFILES.md](./DEFINE_RISK_PROFILES.md) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | ✅ Shipped |
 | **Risk Level** | medium (echo from DEFINE — reasons: new warn-only linter logic, limited blast radius) |
 | **Design Confidence** | 0.90 — KB patterns (`python`, `testing`) + specialist matches; Increment 1 precedents reused |
 
@@ -321,6 +321,7 @@ Not applicable — no data pipelines.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-07-29 | design-agent (autopilot) | Initial version — 4 [ASSUMED] decisions (all ≥ 0.85), 12-file manifest, RP rule inventory |
+| 1.1 | 2026-07-29 | ship-agent | Shipped and archived |
 
 ---
 

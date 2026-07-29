@@ -9,7 +9,7 @@
 | **Feature** | RISK_PROFILES |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Built) |
+| **Status** | ✅ Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/plans/2026-07-29-agentspec-incremental-improvements.md` — Increment 2 (§8), rollout policy §17.2, PR 2 scope §18 ("delivers Increment 2 in Observe/Warn mode; does NOT yet activate the full rigor matrix"). Phase 0 exploration is carried by the plan itself (approaches compared in §2–§4 against benchmark evidence; YAGNI in §21) — ratified by the maintainer via the program goal.
@@ -207,6 +207,7 @@ None blocking — ready for Design. One decision is explicitly deferred to Desig
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-07-29 | define-agent | Initial version — extracted from the incremental-improvements plan §8/§17.2/§18 (PR 2 scope) under the /auto pre-ignition interview |
+| 1.1 | 2026-07-29 | ship-agent | Shipped and archived |
 
 ---
 

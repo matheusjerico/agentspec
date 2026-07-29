@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_RISK_PROFILES.md](../features/DEFINE_RISK_PROFILES.md) |
 | **DESIGN** | [DESIGN_RISK_PROFILES.md](../features/DESIGN_RISK_PROFILES.md) |
-| **Status** | Complete |
+| **Status** | ✅ Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | off |
 | **Risk Level** | medium (echo from DEFINE — new warn-only linter logic, limited blast radius) |
