@@ -9,7 +9,7 @@
 | **Feature** | BUILD_QUALITY_GATES |
 | **Date** | 2026-07-28 |
 | **Author** | define-agent |
-| **Status** | Ready for Design |
+| **Status** | ✅ Complete (Designed) |
 | **Clarity Score** | 15/15 |
 
 ---
@@ -173,4 +173,4 @@ None - ready for Design.
 
 ## Next Step
 
-**Ready for:** `/design .claude/sdd/features/DEFINE_BUILD_QUALITY_GATES.md`
+**Ready for:** `/build .claude/sdd/features/DESIGN_BUILD_QUALITY_GATES.md`

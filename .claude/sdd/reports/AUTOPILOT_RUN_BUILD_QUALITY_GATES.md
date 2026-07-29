@@ -24,6 +24,9 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (Problem 3 · Users 3 · Goals 3 · Success 3 · Scope 3); no discrepancy with recorded score | PASS | 2026-07-29T01:51Z | - | - |
+| D | design | 1 | confidence 0.75 — AT-002 execution mode deviates from literal interview choice; asked with options A/B/C + evidence; human chose "Both: B then A" | ANSWERED | 2026-07-29T02:02Z | - | - |
+| L | design | 1 | spec-lint exit 0 — VERDICT: PASS, no findings | PASS | 2026-07-29T02:04Z | - | - |
+| J | design | 1 | spec-judge exit 2 — config: OPENROUTER_API_KEY not set | SKIP:exit2 | 2026-07-29T02:04Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +38,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_BUILD_QUALITY_GATES.md | pending | pending |
-| Design | pending | pending | pending |
+| Ignition | .claude/sdd/features/DEFINE_BUILD_QUALITY_GATES.md | 13dddc8 — "auto(BUILD_QUALITY_GATES): ignition" | I: re-score 15/15 PASS |
+| Design | .claude/sdd/features/DESIGN_BUILD_QUALITY_GATES.md | pending commit | L: PASS · J: SKIP:exit2 (config) · D: 1 ANSWERED |
 | Build | pending | pending | pending |
 | Ship | pending | pending | pending |
 | PR | pending | - | pending |
@@ -59,7 +62,7 @@
 |--------|-------|-------|-------|
 | Gate L regenerations | 1 per document | 0 | - |
 | Gate J refinements | 1 per document | 0 | - |
-| Gate D pauses | un-capped (interactive) | 0 | - |
+| Gate D pauses | un-capped (interactive) | 1 | AT-002 execution mode — ledger row D/design/1, ANSWERED "Both: B then A" |
 | Build per-file retries | 3 per file | 0 | - |
 | `--max-iterations` cap | default | 0 | L+J only — never Gate D |
 
