@@ -13,7 +13,7 @@
 | **DEFINE (input)** | .claude/sdd/features/DEFINE_RISK_DRIVEN_TDD.md |
 | **Flags** | none |
 | **Branch** | feat/auto-risk-driven-tdd |
-| **Status** | 🔄 In Progress |
+| **Status** | ✅ Success (PR: https://github.com/matheusjerico/agentspec/pull/8) |
 
 ---
 
@@ -30,6 +30,7 @@
 | R | build | 1 | Review Verdict clean-with-minors (4 Important incl. round-2 New-I4 + 7 Minor; 2/2 rounds) | PASS | 2026-07-29T19:42Z | - | - |
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 — WARN BR.tdd_required_by_risk (medium+off) VISIBLE by design (AT-003 live) | PASS | 2026-07-29T19:43Z | - | - |
 | S | ship | 1 | pre-ship checklist 6/6 (contract-gate re-run exit 0 with the visible WARN) | PASS | 2026-07-29T19:50Z | - | - |
+| PR | pr | 1 | gh pr create → https://github.com/matheusjerico/agentspec/pull/8 | PASS | 2026-07-29T19:55Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -45,7 +46,7 @@
 | Design | .claude/sdd/features/DESIGN_RISK_DRIVEN_TDD.md | 4791434 — design complete | L: PASS (TM live) · J: SKIP:exit3 · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
 | Build | .claude/sdd/reports/BUILD_REPORT_RISK_DRIVEN_TDD.md | pending | B: 10/10 (v2) · R: clean-with-minors (2/2) · L: PASS + live WARN |
 | Ship | .claude/sdd/archive/RISK_DRIVEN_TDD/ | pending | S: 6/6 checklist |
-| PR | pending | - | - |
+| PR | https://github.com/matheusjerico/agentspec/pull/8 | - | merged to main per program goal |
 
 ---
 
@@ -87,7 +88,7 @@ N/A
 
 | Tier | Target | Result |
 |------|--------|--------|
-| Terminal summary | stdout | pending |
+| Terminal summary | stdout | shown |
 | OS notification | n/a (interactive entrypoint) | - |
 | Webhook | not configured | - |
 
@@ -97,13 +98,13 @@ N/A
 
 | Metric | Value |
 |--------|-------|
-| **Terminal Status** | 🔄 In Progress |
-| **Phases Completed** | 0/5 (ignition · design · build · ship · PR) |
-| **Gates Evaluated** | 1 (1 PASS) |
+| **Terminal Status** | ✅ Success (PR: https://github.com/matheusjerico/agentspec/pull/8) |
+| **Phases Completed** | 5/5 (ignition · design · build · ship · PR) |
+| **Gates Evaluated** | 8 (7 PASS · 1 SKIP:exit3) |
 | **Total Regenerations** | 0 |
-| **Human Interactions** | 0 |
-| **PR** | - |
-| **Manual Follow-up** | - |
+| **Human Interactions** | 0 — fully lights-out post-ignition |
+| **PR** | https://github.com/matheusjerico/agentspec/pull/8 |
+| **Manual Follow-up** | none |
 
 ---
 
@@ -112,3 +113,4 @@ N/A
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-07-29 | autopilot | Run opened |
+| 1.1 | 2026-07-29 | autopilot | Terminal: ✅ Success (PR #8); live AT-003 WARN on own gate |
