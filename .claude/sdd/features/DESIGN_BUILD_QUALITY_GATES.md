@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent |
 | **DEFINE** | [DEFINE_BUILD_QUALITY_GATES.md](./DEFINE_BUILD_QUALITY_GATES.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Complete (Built) |
 
 ---
 
@@ -490,4 +490,4 @@ def test_build_command_documents_tdd_flag():
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_BUILD_QUALITY_GATES.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_BUILD_QUALITY_GATES.md`
