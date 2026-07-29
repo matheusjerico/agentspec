@@ -38,11 +38,10 @@ What success looks like (prioritized):
 |----------|------|
 | **MUST** | Whole-branch adversarial review as the final step of sdd-build: dispatch the existing `code-reviewer` on the merge-base→HEAD diff with the feature's DEFINE acceptance criteria as review lens |
 | **MUST** | `BUILD_REPORT` gains a **Review Verdict** section: verdict + severity-ranked findings (Critical/Important/Minor) + per-finding resolution |
-| **MUST** | Critical/Important findings enter a fix loop inside build (fix → scoped re-review); Minor findings are recorded, never block |
+| **MUST** | Critical/Important findings enter a fix loop inside build (fix → scoped re-review of the fix diff only); Minor findings are recorded, never block |
 | **MUST** | sdd-ship's Build Report Validation refuses to ship when the Review Verdict is missing or has unresolved Critical/Important findings (existing Cannot-ship row) |
 | **MUST** | Gate R in sdd-autopilot: in `/auto`, fix-loop budget of 2 rounds; findings persisting after round 2 → abort with a gap report listing open findings |
 | **SHOULD** | `--tdd` opt-in flag on `/build`: each manifest task follows RED-GREEN with the failing-test run observed and recorded as evidence in the BUILD_REPORT; default `/build` behavior unchanged |
-| **COULD** | Fix-loop re-reviews scoped to the fix diff only (not the whole branch), per the Superpowers scoped re-review pattern |
 
 **Priority Guide:**
 - **MUST** = MVP fails without this
@@ -55,7 +54,7 @@ What success looks like (prioritized):
 
 Measurable outcomes (must include numbers):
 
-- [ ] Benchmark re-run (Spendly brief, gate active): the review reports ≥1 Critical/Important finding on the UTC-class bug — naturally occurring, or the seeded ground-truth exemplar planted as fallback — and blocks handoff until resolved (100% detection of the seeded exemplar)
+- [ ] Benchmark re-run (gate active, from the "Spendly" expense-tracker product-owner brief of the 2026-07-28 Superpowers benchmark named in the Problem Statement): the review reports ≥1 Critical/Important finding on the UTC-class bug — naturally occurring, or the seeded ground-truth exemplar planted as fallback — and blocks handoff until resolved (100% detection of the seeded exemplar)
 - [ ] 100% of `/build` runs produce a BUILD_REPORT containing a Review Verdict section
 - [ ] `/ship` refuses (Cannot ship) in 100% of cases where the verdict is missing or has unresolved Critical/Important findings
 - [ ] In `/auto`, the fix loop runs at most 2 rounds; a 3rd evaluation with open findings aborts the run with a gap report — 0 runs proceed past Gate R with open Critical/Important findings
@@ -169,6 +168,7 @@ None - ready for Design.
 |---------|------|--------|---------|
 | 1.0 | 2026-07-28 | define-agent | Initial version, extracted from BRAINSTORM_BUILD_QUALITY_GATES.md (4 discovery Q&A, approach B confirmed, 2 validations) |
 | 1.1 | 2026-07-29 | ship-agent | Shipped and archived |
+| 1.2 | 2026-07-29 | iterate-agent | Post-ship doc alignment (judge B3/B1 findings): removed the scoped-re-review COULD row — the shipped Step 5.5 made it the mandatory fix-loop mechanism, so the MUST now states it explicitly; named the Spendly brief in the benchmark success criterion. No scope change; DESIGN/code already consistent (no cascade) |
 
 ---
 
