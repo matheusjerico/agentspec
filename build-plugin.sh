@@ -76,7 +76,10 @@ info "Building AgentSpec plugin from .claude/ ..."
 if [[ -d "${SCRIPT_DIR}/tests" ]]; then
     if python3 -c "import pytest" 2>/dev/null; then
         info "Running Python tests..."
-        if (cd "${SCRIPT_DIR}" && python3 -m pytest tests/ -q >/dev/null 2>&1); then
+        # Excludes test_plugin_parity.py: it compares plugin/ against the
+        # PREVIOUS package, which is stale before this build runs. It runs
+        # post-package instead (see Step 5e below).
+        if (cd "${SCRIPT_DIR}" && python3 -m pytest tests/ -q --ignore=tests/test_plugin_parity.py >/dev/null 2>&1); then
             ok "Python tests passed"
         else
             error "Python tests failed — run: python3 -m pytest tests/ -v"
@@ -322,6 +325,28 @@ for p in manifest.get("plugins", []):
 dst.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
 PY
 ok "Root .claude-plugin/marketplace.json synced"
+
+# ─── Step 5e: Run plugin/ parity test (post-package) ─────────────────────────
+# Confirms plugin/ is structurally in sync with .claude/ + plugin-extras/
+# after packaging. Must run here, not in Step 0: it compares plugin/ against
+# canonical sources, and plugin/ only reflects this build once packaging,
+# rewriting, and chmod are done. Never block builds on a missing optional
+# dev dependency.
+
+if [[ -f "${SCRIPT_DIR}/tests/test_plugin_parity.py" ]]; then
+    if python3 -c "import pytest" 2>/dev/null; then
+        info "Running plugin/ parity test..."
+        if (cd "${SCRIPT_DIR}" && python3 -m pytest tests/test_plugin_parity.py -q >/dev/null 2>&1); then
+            ok "Plugin parity test passed"
+        else
+            error "plugin/ diverged from canonical sources after packaging — this should be impossible; inspect the parity failures above"
+            error "run: python3 -m pytest tests/test_plugin_parity.py -v"
+            exit 1
+        fi
+    else
+        warn "pytest not installed — skipping plugin parity test (pip install pytest to enable)"
+    fi
+fi
 
 # ─── Step 6: Verify no stale .claude/ paths remain ──────────────────────────
 

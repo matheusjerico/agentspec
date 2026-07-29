@@ -22,6 +22,14 @@ from .vocab import Category, Severity
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MAX_TOKENS = 8000
+
+
+def _max_tokens() -> int:
+    try:
+        return int(os.environ.get("JUDGE_MAX_TOKENS", DEFAULT_MAX_TOKENS))
+    except ValueError:
+        return DEFAULT_MAX_TOKENS
 _VALID_CATEGORIES = set(get_args(Category))
 _VALID_SEVERITIES = set(get_args(Severity))
 _SEVERITY_SYNONYMS = {"critical": "high"}
@@ -135,7 +143,7 @@ class OpenRouterEvaluator:
                 },
             ],
             "temperature": 0.1,
-            "max_tokens": 1500,
+            "max_tokens": _max_tokens(),
         }
         http_request = urllib.request.Request(
             OPENROUTER_URL,

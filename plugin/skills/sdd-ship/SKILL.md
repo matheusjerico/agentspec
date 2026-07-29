@@ -41,6 +41,7 @@ Resolve completeness in this order before anything is archived:
 │     └─ All tasks completed?                                          │
 │     └─ All tests passing?                                            │
 │     └─ No blocking issues?                                           │
+│     └─ Contract gate: spec-lint --phase build → exit 0?              │
 │                                                                      │
 │  3. CONFIDENCE ASSIGNMENT                                            │
 │     ├─ All artifacts present + tests pass  → 0.95 → Ship             │
@@ -55,8 +56,13 @@ Resolve completeness in this order before anything is archived:
 |-----------|-------|--------|------------|--------|
 | All present | Pass | None | 0.95 | Ship immediately |
 | All present | Pass | Minor | 0.85 | Ship with notes |
+| All present | Pass | Review Verdict dirty or missing | 0.50 | Cannot ship |
 | All present | Fail | Any | 0.50 | Cannot ship |
 | Missing | Any | Any | 0.30 | Cannot ship |
+
+**Review Verdict is an independent gating dimension:** `dirty` or `missing` →
+Cannot ship regardless of the other columns — the verdict row above is the
+canonical example, not an exhaustive enumeration of column combinations.
 
 ### When NOT to ship
 
@@ -66,8 +72,23 @@ Any of these blocks the ship — stop and route back to `/build`:
 - Tests are failing
 - Blocking issues documented in the build report
 - Missing required artifacts (DEFINE, DESIGN, BUILD_REPORT)
+- BUILD_REPORT Review Verdict is `dirty` or `missing` (whole-branch review gate — `build.execution.final_review`)
+- BUILD_REPORT fails its contract gate — re-run the same validation Build ran at Step 6.5:
 
-Ship only when all acceptance tests from DEFINE pass, the build report shows 100% completion, and no blocking issues remain.
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/spec-lint .claude/sdd/reports/BUILD_REPORT_{FEATURE}.md --phase build \
+    --contracts-file ${CLAUDE_PLUGIN_ROOT}/sdd/architecture/WORKFLOW_CONTRACTS.yaml
+  ```
+
+  Exit 1 blocks the ship for exactly the reasons that blocked Build (verdict value, open
+  blocking findings, fix-round budget, TDD evidence, task completeness). Exit >= 2 →
+  record a VISIBLE SKIP and continue the remaining checks — never assume PASS. Exit-code
+  semantics are owned by `${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/USAGE.md` and `contract_enforcement`. This
+  re-validation is the `build_report_contract_gate_pass` item of `ship.pre_ship_checklist`;
+  manual runs use the default `--legacy-mode warn`, while under `/auto` Gate S re-runs it
+  with `--legacy-mode fail` (fails closed, mirroring Gate L).
+
+Ship only when all acceptance tests from DEFINE pass, the build report shows 100% completion, no blocking issues remain, and the BUILD_REPORT Review Verdict reads `clean` or `clean-with-minors`.
 
 ---
 
@@ -204,6 +225,8 @@ PRE-FLIGHT CHECK
 ├─ [ ] All artifacts verified present (DEFINE, DESIGN, BUILD_REPORT)
 ├─ [ ] BUILD_REPORT shows all tasks complete
 ├─ [ ] All tests passing
+├─ [ ] Review Verdict is clean or clean-with-minors (never dirty/missing)
+├─ [ ] Contract gate re-validated: spec-lint --phase build exit 0 (or VISIBLE SKIP recorded)
 ├─ [ ] Acceptance tests from DEFINE verified
 ├─ [ ] No blocking issues in the build report
 ├─ [ ] Code deployed (if applicable)
