@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent |
 | **DEFINE** | [DEFINE_BUILD_QUALITY_GATES.md](./DEFINE_BUILD_QUALITY_GATES.md) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | ✅ Shipped |
 
 ---
 
@@ -485,6 +485,7 @@ def test_build_command_documents_tdd_flag():
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-07-29 | design-agent | Initial version — autopilot run, Gate D decision 6 human-answered |
+| 1.1 | 2026-07-29 | ship-agent | Shipped and archived |
 
 ---
 

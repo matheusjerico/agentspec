@@ -1,0 +1,6 @@
+name: autopilot-design-conformance
+intent: |
+  AgentSpec's mandatory Build->Ship path verifies artifacts and tests but never reviews code adversarially, so whole-branch bugs that tests cannot reach ship undetected - proven by the 2026-07-28 Superpowers benchmark, where the AgentSpec build shipped a UTC date bug with 37/37 tests passing while Superpowers' mandatory final review caught the identical bug class before PR.
+  Phase purpose: Phase methodology - architecture design process, inline decision records, file manifest construction, code patterns, testing strategy, anti-patterns
+output_contract:
+  required_fields: [architecture_overview, components, key_decisions, file_manifest, code_patterns, testing_strategy]

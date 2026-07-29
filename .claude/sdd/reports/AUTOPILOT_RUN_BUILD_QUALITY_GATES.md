@@ -29,6 +29,7 @@
 | J | design | 1 | spec-judge exit 2 — config: OPENROUTER_API_KEY not set | SKIP:exit2 | 2026-07-29T02:04Z | - | - |
 | R | build | 1 | whole-branch review (9780225..00e1f8c): dirty — 9 Important + 2 Minor → fix round 1 (a1de051) → scoped re-review 10/10 ADDRESSED, no new breakage → verdict clean (rounds 1/2) | PASS | 2026-07-29T02:24Z | - | - |
 | B | build | 1 | BUILD_REPORT 7/7 manifest tasks + 2 acceptance runs (AT-002 A+B); suite 59/59; AT-001..006 verified | PASS | 2026-07-29T02:24Z | - | - |
+| S | ship | 1 | pre-ship checklist 5/5 — build_report_complete · all_tests_passing (59/59) · no_blocking_issues · acceptance_tests_verified · review_verdict_clean | PASS | 2026-07-29T02:29Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -43,7 +44,7 @@
 | Ignition | .claude/sdd/features/DEFINE_BUILD_QUALITY_GATES.md | 13dddc8 — "auto(BUILD_QUALITY_GATES): ignition" | I: re-score 15/15 PASS |
 | Design | .claude/sdd/features/DESIGN_BUILD_QUALITY_GATES.md | e152277 — "auto(BUILD_QUALITY_GATES): design complete" | L: PASS · J: SKIP:exit2 (config) · D: 1 ANSWERED |
 | Build | .claude/sdd/reports/BUILD_REPORT_BUILD_QUALITY_GATES.md | 00e1f8c (impl) · a1de051 (fix round 1) | R: clean (1/2 rounds) · B: 100% complete, 59/59 |
-| Ship | pending | pending | pending |
+| Ship | .claude/sdd/archive/BUILD_QUALITY_GATES/ (5 artifacts incl. SHIPPED_2026-07-29.md) | pending commit | S: 5/5 checklist |
 | PR | pending | - | pending |
 
 ---
