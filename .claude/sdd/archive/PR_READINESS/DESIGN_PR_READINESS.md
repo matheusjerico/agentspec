@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_PR_READINESS.md](./DEFINE_PR_READINESS.md) |
 | **Risk Level** | medium (echo from DEFINE — publication path + three skills; explicit-intent guard preserved) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | Shipped |
 | **Design Confidence** | 0.90 — conduct/data/template increment; A-003 validated against the real 405-line command |
 
 ---

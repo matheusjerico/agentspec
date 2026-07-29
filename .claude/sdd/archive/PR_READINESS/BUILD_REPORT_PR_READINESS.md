@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_PR_READINESS.md](../features/DEFINE_PR_READINESS.md) |
 | **DESIGN** | [DESIGN_PR_READINESS.md](../features/DESIGN_PR_READINESS.md) |
-| **Status** | Complete |
+| **Status** | Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | off |
 | **Risk Level** | medium (echo from DEFINE) |

@@ -29,6 +29,7 @@
 | R | build | 1 | code-reviewer branch verdict: clean-with-minors (F1–F7 closed, 1 cosmetic minor recorded); fix rounds 1/2 | PASS | 2026-07-29T21:05Z | - | - |
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (1 WARN: medium risk + TDD off, expected) | PASS | 2026-07-29T21:10Z | - | - |
 | B | build | 1 | BUILD_REPORT complete; suites 162 root + 172 spec-linter; plugin build + Step 5e parity exit 0 | PASS | 2026-07-29T21:10Z | - | - |
+| S | ship | 1 | pre-ship checklist: report Complete, verdict clean-with-minors, 334/334 green, statuses Shipped; PR_READY generated (13/13 ✅, Gaps: None) | PASS | 2026-07-29T21:20Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -42,8 +43,8 @@
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_PR_READINESS.md | 5528617 — ignition | I: re-score 15/15 |
 | Design | .claude/sdd/features/DESIGN_PR_READINESS.md | 8be3cc3 — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
-| Build | .claude/sdd/reports/BUILD_REPORT_PR_READINESS.md | pending (this commit) | R: clean-with-minors · L: PASS · B: PASS |
-| Ship | pending | - | - |
+| Build | .claude/sdd/archive/PR_READINESS/BUILD_REPORT_PR_READINESS.md | 870a904 — build complete | R: clean-with-minors · L: PASS · B: PASS |
+| Ship | .claude/sdd/archive/PR_READINESS/SHIPPED_2026-07-29.md | pending (this commit) | S: PASS · PR_READY generated |
 | PR | pending | - | - |
 
 ---
