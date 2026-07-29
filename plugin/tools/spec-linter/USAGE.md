@@ -125,6 +125,12 @@ verdict output goes to stdout.
   (pre-risk-profile adoption path) — and `BR.tdd_exception_invalid` — every
   `exception: <category>` token in the TDD Evidence section must be one of
   `tdd_policy.exception_categories`. Without the block, both rules are off.
+  With a `task_review` contracts block, two more arm: `BR.task_review_missing`
+  — at report Risk Level high/critical every executed Task ID needs a matching
+  `## Task Reviews` row (FAIL per missing id; medium WARNs; low or no Risk
+  Level row stays silent) — and `BR.task_review_dirty` — any review verdict
+  `dirty` FAILs at every risk level, and tokens outside `task_review.verdicts`
+  FAIL. v1 builds (Task ID `-`) are structurally exempt from the matching.
 - **Define-phase risk rules** (`--phase define`): when the contracts YAML
   carries a `risk_profiles` block, the define phase routes to a
   `DefinePhaseContract` — the same FAIL-level section-presence semantics plus

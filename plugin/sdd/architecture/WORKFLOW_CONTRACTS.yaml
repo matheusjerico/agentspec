@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.11.0
+# Version: 3.12.0
 # Date: 2026-07-29
 
-version: "3.11.0"
+version: "3.12.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -490,6 +490,30 @@ tdd_policy:
     low_off: silent
     no_risk_row: silent   # pre-Increment-2 reports — adoption path
 
+# Incremental per-task review (Increment 5). Conduct owned by sdd-build
+# (Step 4.6: blind-first dispatch of the manifest reviewer after each task's
+# verification); recorded in the BUILD_REPORT's Task Reviews section; enforced
+# by spec-lint --phase build (BR.task_review_missing, BR.task_review_dirty).
+# The whole-branch final review (build.execution.final_review) is NEVER
+# replaced by task reviews — see invariant below.
+task_review:
+  verdicts: [clean, clean-with-minors, dirty, skipped-by-policy]
+  policy_by_risk:
+    low: executor_checklist
+    medium: selective_independent   # Warn rollout (§18 PR 5)
+    high: independent_required
+    critical: independent_plus_specialist
+  blind_first: "the reviewer forms the initial assessment WITHOUT the implementer's rationale — context is requirements, acceptance criteria, task diff, tests, dependent interfaces, applicable risks"
+  fix_budget_per_task: 1            # separate from build.execution.final_review.fix_loop_budget
+  dependents_blocked_on: [dirty]
+  enforcement:
+    high_critical_missing: FAIL     # BR.task_review_missing
+    medium_missing: WARN
+    low_missing: silent
+    no_risk_row: silent             # pre-Increment-2 adoption path
+    dirty_verdict: FAIL             # BR.task_review_dirty — any risk level
+  invariant: "the whole-branch final review (build.execution.final_review) stays mandatory — task reviews never replace it"
+
 
 # =============================================================================
 # PHASE 2: DESIGN
@@ -939,6 +963,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.12.0"
+    date: "2026-07-29"
+    changes:
+      - "TASK_REVIEW (Increment 5): new top-level task_review block — verdict vocabulary (clean/clean-with-minors/dirty/skipped-by-policy), policy_by_risk (low executor_checklist / medium selective_independent Warn-rollout / high independent_required / critical independent_plus_specialist — the §8.3 Task Review row activated for high+critical), blind-first rule (§11.3), fix_budget_per_task 1 (separate from the final review's 2), dependents_blocked_on dirty, enforcement map. sdd-build gains Step 4.6 (per-task blind-first review dispatch after verification); BUILD_REPORT gains the Task Reviews section; BuildReportContract gains BR.task_review_missing (high/critical missing rows FAIL, medium WARN, low/no-Risk-row silent) and BR.task_review_dirty (any dirty verdict FAIL; invalid tokens FAIL). The whole-branch final review stays mandatory and unchanged (invariant recorded)."
+
   - version: "3.11.0"
     date: "2026-07-29"
     changes:

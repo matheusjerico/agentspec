@@ -18,6 +18,9 @@ contracts data also carries a top-level `tdd_policy` mapping, its
 `risk_policy` and `exception_categories` are passed to the contract too,
 enabling `BR.tdd_required_by_risk`/`BR.tdd_exception_invalid`; absent or
 non-mapping `tdd_policy` leaves both rules off — silent, backward compatible.
+The top-level `task_review` block follows the identical opt-in shape:
+`verdicts` supplies `BR.task_review_missing`/`BR.task_review_dirty`; absent
+or non-mapping `task_review` leaves both off.
 
 `--phase define` is similarly conditional: when the loaded contracts data
 carries a top-level `risk_profiles` mapping, it runs a `DefinePhaseContract`
@@ -158,7 +161,9 @@ def _build_report_contract(
     The top-level `tdd_policy` block is optional: a dict supplies
     `risk_policy`/`exception_categories` to the contract; anything else
     (absent, non-dict) passes `None`/`None`, leaving the two `BR.tdd_*` risk
-    rules off."""
+    rules off. The top-level `task_review` block is optional the same way: a
+    dict supplies `verdicts`, arming `BR.task_review_missing`/
+    `BR.task_review_dirty`; anything else passes `None`, leaving both off."""
     required = _phase_required_sections("build", data, contracts_file)
     block = data["build"]
 
@@ -244,6 +249,18 @@ def _build_report_contract(
         risk_tdd_policy = risk_policy
         tdd_exception_categories = exception_categories
 
+    task_review_verdicts: list[str] | None = None
+    task_review = data.get("task_review")
+    if isinstance(task_review, dict):
+        review_verdicts = task_review.get("verdicts")
+        if not isinstance(review_verdicts, list) or not all(
+            isinstance(v, str) for v in review_verdicts
+        ):
+            raise _OperationalError(
+                f"task_review.verdicts must be a list of strings in {contracts_file.name}"
+            )
+        task_review_verdicts = review_verdicts
+
     return BuildReportContract(
         required_sections=required,
         verdicts=verdicts,
@@ -253,6 +270,7 @@ def _build_report_contract(
         legacy_level=legacy_level,
         risk_tdd_policy=risk_tdd_policy,
         tdd_exception_categories=tdd_exception_categories,
+        task_review_verdicts=task_review_verdicts,
     )
 
 

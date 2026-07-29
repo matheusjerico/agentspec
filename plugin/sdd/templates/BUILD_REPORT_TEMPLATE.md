@@ -60,6 +60,19 @@
 
 ---
 
+## Task Reviews
+
+> One row per task (v2 manifests; `WORKFLOW_CONTRACTS.yaml` → `task_review`).
+> Blind-first per-task review after verification; `dirty` blocks dependents
+> and FAILs the contract gate; missing rows FAIL at high/critical report risk
+> (WARN at medium). `skipped-by-policy` records the policy citation.
+
+| # | Task ID | Risk | Reviewer | Verdict | Blocking open / Minor | Fix rounds |
+|---|---------|------|----------|---------|----------------------|------------|
+| 1 | {TASK-AREA-001} | {low/medium/high/critical} | {@reviewer / (self)} | {clean / clean-with-minors / dirty / skipped-by-policy} | {0 / 1} | {0-1}/1 |
+
+---
+
 ## Files Created
 
 | File | Lines | Agent | Verified | Notes |
