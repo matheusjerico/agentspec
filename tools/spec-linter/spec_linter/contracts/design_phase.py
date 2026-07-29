@@ -22,6 +22,20 @@ is `manifest_broken`, distinct from an absent manifest: broken is FAIL
 `SddPhaseContract` — this preserves current exit-1 behavior for missing
 required sections; the Task Manifest section itself is deliberately NOT one
 of them (the manifest stays opt-in).
+
+A second opt-in family — sourced from the top-level `traceability` block
+(Increment 6) — arms via the constructor's `verification_types` (`None`
+disables all three `TX.*` rules): `TX.must_without_task` FAILs a MUST-priority
+`## Traceability Matrix` row whose Tasks cell is empty; `TX.unknown_type`
+FAILs any comma-separated Verification Type token outside the configured
+vocabulary; `TX.orphan_reference` WARNs both directions of the REQ<->task
+cross-reference against a present v2 manifest (matrix Tasks citing an unknown
+manifest id, or a manifest task's REQ-ID-grammar `requirements` entry absent
+from the matrix — legacy MUST-n/SC-n refs never flag). Like the manifest
+above, an absent Traceability Matrix section is silent — zero `TX.*`
+findings — and both parsers use `_section_exact` (equality, not prefix) on
+the template-fixed "Traceability Matrix" heading, so a decoy section can
+never shadow the real one.
 """
 
 from __future__ import annotations
@@ -43,6 +57,15 @@ from ..verdict import Finding, Level
 _HEADING = re.compile(r"^#{1,6}\s+(.*\S)\s*$", re.MULTILINE)
 _H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
+# Traceability Matrix rows (Increment 6): design-side rows carry 6 cells
+# (#, REQ, Priority, Tasks, Tests, Verification Type) — the same
+# numbered-row grammar `BuildReportContract` uses for its task/review
+# tables, reused here verbatim.
+_NUMBERED_ROW = re.compile(r"^\|\s*\d+\s*\|.*$", re.MULTILINE)
+# A manifest task's `requirements` entry is orphan-checked against the
+# matrix only when it is a REQ-ID — legacy MUST-n/SC-n refs are tolerated
+# (never orphan-flagged), per DEFINE A-002's pre-REQ-ID adoption path.
+_REQ_TOKEN = re.compile(r"^REQ-\d+$")
 
 
 def _slug(text: str) -> str:
@@ -61,6 +84,46 @@ def _candidate_sections(artifact: str, slug_prefix: str) -> list[str]:
             end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
             sections.append(artifact[start:end])
     return sections
+
+
+def _section_exact(artifact: str, slug: str) -> str | None:
+    """Text between the first `##` heading whose slug EQUALS `slug` and the
+    next `##` heading (or end of document); `None` if no such heading
+    exists. Mirrors `BuildReportContract._section_exact` — a template-fixed
+    heading ("Traceability Matrix") must never let a decoy ("## Traceability
+    Matrix Notes") shadow the real section in either scan direction
+    (Increment 5's decoy lesson, applied here from birth)."""
+    matches = list(_H2.finditer(artifact))
+    for i, m in enumerate(matches):
+        if _slug(m.group(1)) == slug:
+            start = m.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
+            return artifact[start:end]
+    return None
+
+
+# Disclosed residual: rows with fewer cells than the template's column
+# count are dropped without a diagnostic — a truncated MUST row evades the
+# matrix rules (mirrors the Task Reviews parser's documented trade-off).
+def _parse_matrix_rows(section: str) -> list[_MatrixRow]:
+    """Numbered rows of a `## Traceability Matrix` section — design-side
+    shape: `| # | REQ | Priority | Tasks | Tests | Verification Type |`.
+    Rows with fewer than 6 cells, or an unfilled template placeholder
+    (`{` in the REQ or Priority cell), are dropped without a diagnostic —
+    mirrors the task-manifest placeholder guards used elsewhere in this
+    module."""
+    rows: list[_MatrixRow] = []
+    for m in _NUMBERED_ROW.finditer(section):
+        cells = [c.strip() for c in m.group(0).strip("|").split("|")]
+        if len(cells) < 6:
+            continue
+        req, priority = cells[1], cells[2].lower()
+        if "{" in req or "{" in priority:
+            continue
+        rows.append(
+            _MatrixRow(req=req, priority=priority, tasks=cells[3], verification_type=cells[5])
+        )
+    return rows
 
 
 def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
@@ -97,10 +160,20 @@ def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
 
 
 @dataclass(frozen=True, slots=True)
+class _MatrixRow:
+    req: str
+    priority: str
+    tasks: str
+    verification_type: str
+
+
+@dataclass(frozen=True, slots=True)
 class _ParsedDesignPhase:
     headings: set[str]
     manifest: dict | None
     manifest_broken: bool
+    matrix_rows: list[_MatrixRow]
+    matrix_present: bool
 
 
 class DesignPhaseContract:
@@ -110,22 +183,44 @@ class DesignPhaseContract:
         required_task_fields: list[str],
         files_keys: list[str],
         verification_keys: list[str],
+        verification_types: list[str] | None = None,
+        manifest_configured: bool = True,
     ) -> None:
         self.name = "sdd-phase:design"
         self._required = required_sections
         self._required_task_fields = required_task_fields
         self._files_keys = files_keys
         self._verification_keys = verification_keys
+        # Opt-in, mirroring the v2 manifest's own posture: `None` disables
+        # the whole `TX.*` traceability-matrix rule family — a DESIGN with
+        # no configured vocabulary stays silent, never a WARN/FAIL.
+        self._verification_types = verification_types
+        # A consumer who configured `traceability` but NOT `task_manifest`
+        # must never see TM.* findings — even when a document happens to
+        # contain a manifest-shaped section. The CLI passes False in that
+        # cross-adopter configuration; True preserves every existing call.
+        self._manifest_configured = manifest_configured
 
     def parse(self, artifact: str) -> _ParsedDesignPhase:
         headings = {_slug(m.group(1)) for m in _HEADING.finditer(artifact)}
         manifest, broken = _parse_manifest(artifact)
+        matrix_section = _section_exact(artifact, "traceability_matrix")
+        matrix_present = matrix_section is not None
+        matrix_rows = _parse_matrix_rows(matrix_section) if matrix_section is not None else []
         return _ParsedDesignPhase(
-            headings=headings, manifest=manifest, manifest_broken=broken
+            headings=headings,
+            manifest=manifest,
+            manifest_broken=broken,
+            matrix_rows=matrix_rows,
+            matrix_present=matrix_present,
         )
 
     def check(self, parsed: _ParsedDesignPhase) -> list[Finding]:
         findings = self._check_required_sections(parsed)
+        findings.extend(self._check_matrix(parsed))
+
+        if not self._manifest_configured:
+            return findings
 
         if parsed.manifest_broken:
             findings.append(
@@ -162,6 +257,140 @@ class DesignPhaseContract:
                         message=f"required section '{section}' is missing",
                         expected="section present as a heading",
                         found="absent",
+                    )
+                )
+        return findings
+
+    def _check_matrix(self, parsed: _ParsedDesignPhase) -> list[Finding]:
+        """`TX.*` traceability-matrix rules — opt-in via `verification_types`
+        (`None` disables the whole family, same posture as v1/v2 above) and
+        further gated on the matrix section actually being present: an
+        absent `## Traceability Matrix` is the v1-silent path, zero `TX.*`
+        findings. `TX.orphan_reference` additionally needs a non-broken
+        manifest to trust its task ids — a broken manifest is treated as
+        absent for this rule only (`TM.unparseable` still fires separately,
+        in `check()`)."""
+        if self._verification_types is None or not parsed.matrix_present:
+            return []
+        findings = self._check_matrix_must_without_task(parsed.matrix_rows)
+        findings.extend(self._check_matrix_unknown_type(parsed.matrix_rows))
+        if not parsed.manifest_broken:
+            findings.extend(
+                self._check_matrix_orphan_reference(parsed.matrix_rows, parsed.manifest)
+            )
+        return findings
+
+    @staticmethod
+    def _check_matrix_must_without_task(rows: list[_MatrixRow]) -> list[Finding]:
+        findings: list[Finding] = []
+        for row in rows:
+            if row.priority != "must":
+                continue
+            tasks = row.tasks.strip()
+            if tasks in ("", "-"):
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TX.must_without_task",
+                        field=row.req,
+                        message=(
+                            f"requirement '{row.req}' is MUST but the Traceability "
+                            "Matrix Tasks cell is empty"
+                        ),
+                        expected="at least one task id in the Tasks cell",
+                        found=tasks or "empty",
+                    )
+                )
+        return findings
+
+    def _check_matrix_unknown_type(self, rows: list[_MatrixRow]) -> list[Finding]:
+        findings: list[Finding] = []
+        for row in rows:
+            for raw_token in row.verification_type.split(","):
+                token = raw_token.strip().lower()
+                if not token:
+                    continue
+                if token not in self._verification_types:
+                    findings.append(
+                        Finding(
+                            level=Level.FAIL,
+                            rule="TX.unknown_type",
+                            field=row.req,
+                            message=(
+                                f"requirement '{row.req}' verification type '{token}' "
+                                "is not in the contract's vocabulary"
+                            ),
+                            expected=" | ".join(self._verification_types),
+                            found=token,
+                        )
+                    )
+        return findings
+
+    @staticmethod
+    def _check_matrix_orphan_reference(
+        rows: list[_MatrixRow], manifest: dict | None
+    ) -> list[Finding]:
+        """WARN both directions of the REQ<->task cross-reference — matrix
+        Tasks cells citing an id absent from the (present) v2 manifest, and
+        manifest task `requirements` entries (REQ-ID grammar only; legacy
+        MUST-n/SC-n refs never flag) absent from the matrix's REQ cells. A
+        v1 DESIGN (no manifest) skips both directions — nothing to
+        cross-reference."""
+        if manifest is None:
+            return []
+        tasks = manifest.get("tasks")
+        if not isinstance(tasks, list):
+            return []
+
+        manifest_task_ids = {
+            task["id"]
+            for task in tasks
+            if isinstance(task, dict) and isinstance(task.get("id"), str) and task["id"]
+        }
+
+        findings: list[Finding] = []
+        for row in rows:
+            for raw_token in row.tasks.split(","):
+                token = raw_token.strip()
+                if not token or token == "-" or token in manifest_task_ids:
+                    continue
+                findings.append(
+                    Finding(
+                        level=Level.WARN,
+                        rule="TX.orphan_reference",
+                        field=row.req,
+                        message=(
+                            f"requirement '{row.req}' Tasks cell references "
+                            f"'{token}', which is not a task id in the v2 manifest"
+                        ),
+                        expected="a task id declared in the Task Manifest (v2)",
+                        found=token,
+                    )
+                )
+
+        matrix_reqs = {row.req for row in rows}
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            task_id = task.get("id")
+            label = task_id if isinstance(task_id, str) and task_id else "?"
+            requirements = task.get("requirements")
+            if not isinstance(requirements, list):
+                continue
+            for req in requirements:
+                if not isinstance(req, str) or not _REQ_TOKEN.match(req) or req in matrix_reqs:
+                    continue
+                findings.append(
+                    Finding(
+                        level=Level.WARN,
+                        rule="TX.orphan_reference",
+                        field=label,
+                        message=(
+                            f"task '{label}' requirement '{req}' is not a REQ in "
+                            "the Traceability Matrix"
+                        ),
+                        expected="a REQ cell present in the Traceability Matrix",
+                        found=req,
                     )
                 )
         return findings

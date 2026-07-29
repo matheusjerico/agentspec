@@ -33,12 +33,16 @@
 
 What success looks like (prioritized):
 
-| Priority | Goal |
-|----------|------|
-| **MUST** | {Primary goal - non-negotiable for MVP} |
-| **MUST** | {Another critical goal} |
-| **SHOULD** | {Important but can defer if timeline tight} |
-| **COULD** | {Nice-to-have if time permits} |
+| ID | Priority | Goal |
+|----|----------|------|
+| REQ-001 | **MUST** | {Primary goal - non-negotiable for MVP} |
+| REQ-002 | **MUST** | {Another critical goal} |
+| REQ-003 | **SHOULD** | {Important but can defer if timeline tight} |
+| REQ-004 | **COULD** | {Nice-to-have if time permits} |
+
+> Requirement IDs are stable for the feature's whole life (spine: Define →
+> Design task manifest `requirements` refs → Traceability Matrix → Build →
+> PR). Never renumber existing IDs on iteration; append new ones.
 
 **Priority Guide:**
 - **MUST** = MVP fails without this

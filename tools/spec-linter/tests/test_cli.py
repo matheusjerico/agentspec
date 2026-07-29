@@ -936,3 +936,145 @@ def test_build_phase_task_review_verdicts_not_a_list_is_error_exit_two(
     code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
     assert code == 2
     assert "ERROR:" in capsys.readouterr().err
+
+
+# --- --phase design / build, traceability (TX.* / BR.must_uncovered) -------
+
+
+def _design_contracts_data_traceability_only() -> dict[str, Any]:
+    """Real `traceability.verification_types` 10-type vocabulary, no
+    `task_manifest` key at all — `--phase design` routing arms on
+    `task_manifest` OR `traceability`, so this exercises the `traceability`
+    alone leg."""
+    return {
+        "design": {"required_sections": _DESIGN_REQUIRED_SECTIONS},
+        "traceability": {
+            "verification_types": [
+                "unit",
+                "integration",
+                "contract",
+                "e2e",
+                "browser_accessibility",
+                "security",
+                "migration_rollback",
+                "data_quality",
+                "observability",
+                "deterministic_inspection",
+            ],
+        },
+    }
+
+
+_DESIGN_DOC_WITH_BROKEN_MATRIX_NO_MANIFEST = """\
+# DESIGN: CLI_SAMPLE
+
+## Architecture Overview
+
+Sample architecture overview.
+
+## Components
+
+Sample components.
+
+## Key Decisions
+
+Sample key decisions.
+
+## File Manifest
+
+Sample file manifest.
+
+## Traceability Matrix
+
+| # | REQ | Priority | Tasks | Tests | Verification Type |
+|---|-----|----------|-------|-------|-------------------|
+| 1 | REQ-1 | MUST | - | tests | unit |
+
+## Code Patterns
+
+Sample code patterns.
+
+## Testing Strategy
+
+Sample testing strategy.
+"""
+
+
+def test_design_phase_traceability_only_broken_matrix_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(_design_contracts_data_traceability_only()))
+    doc = _write_design_doc(
+        tmp_path / "DESIGN_CLI_SAMPLE.md", _DESIGN_DOC_WITH_BROKEN_MATRIX_NO_MANIFEST
+    )
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "TX.must_without_task" in out
+
+
+def _build_contracts_data_with_traceability() -> dict[str, Any]:
+    """The top-level `traceability` block is boolean-only on the build side
+    (`isinstance(data.get("traceability"), dict)` — no subkey validation),
+    so any mapping arms `matrix_must_coverage=True`; the real
+    `verification_types` vocabulary is carried along to mirror the on-disk
+    contract shape, not because the build side reads it."""
+    data = _build_contracts_data()
+    data["traceability"] = {
+        "verification_types": [
+            "unit",
+            "integration",
+            "contract",
+            "e2e",
+            "browser_accessibility",
+            "security",
+            "migration_rollback",
+            "data_quality",
+            "observability",
+            "deterministic_inspection",
+        ],
+    }
+    return data
+
+
+_BUILD_REPORT_HIGH_RISK_UNCOVERED_MUST = _VALID_BUILD_REPORT_HIGH_RISK_TDD_OFF + (
+    "\n## Traceability Matrix\n\n"
+    "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |\n"
+    "|---|-----|----------|-------|-------|-------------------|--------|--------|\n"
+    "| 1 | REQ-1 | MUST | TASK-A | - | unit | Pass | clean |\n"
+)
+
+
+def test_build_phase_traceability_matrix_uncovered_must_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(_build_contracts_data_with_traceability()))
+    report = _write_report(
+        tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _BUILD_REPORT_HIGH_RISK_UNCOVERED_MUST
+    )
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "VERDICT: FAIL" in out
+    assert "BR.must_uncovered" in out
+
+
+def test_design_phase_traceability_verification_types_not_a_list_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the design side validates `traceability.verification_types`
+    (`_design_phase_contract`); the build side treats `traceability` as a
+    boolean presence flag with no subkey validation (see
+    `_build_contracts_data_with_traceability`'s docstring), so this
+    malformed-shape check targets `--phase design`."""
+    data = _design_contracts_data_traceability_only()
+    data["traceability"]["verification_types"] = "unit"
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _VALID_DESIGN_DOC)
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err

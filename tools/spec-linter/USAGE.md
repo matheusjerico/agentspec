@@ -149,6 +149,13 @@ verdict output goes to stdout.
   without verification commands (`TM.missing_requirements` alone is WARN).
   An *absent* manifest is a valid v1 design — zero TM findings. Without the
   contracts block, the phase falls back to the plain section check.
+  With a `traceability` contracts block, the design phase also validates an
+  optional `## Traceability Matrix`: `TX.must_without_task` (FAIL),
+  `TX.unknown_type` (FAIL against the 10-type vocabulary), and
+  `TX.orphan_reference` (WARN, both directions, `REQ-`-token-scoped so legacy
+  refs never flag); the build phase gains `BR.must_uncovered` (FAIL — MUST
+  rows need passing tests or an `exception:` record) and `BR.matrix_missing`
+  (WARN at high/critical only). Absent matrices at Design are silent (opt-in).
 - **Schema emission** (`--emit-schema OUT.json`): writes the reference
   contract's JSON Schema to `OUT.json`, creating parent directories as needed
   (combine with a path to also lint; alone it just writes and exits 0).

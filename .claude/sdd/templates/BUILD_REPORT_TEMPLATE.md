@@ -50,6 +50,19 @@
 
 ---
 
+## Traceability Matrix
+
+> Filled at Build: the Design matrix with Result and Review completed — Result from
+> the verification runs, Review from the task verdicts. MUST rows with empty
+> Tests or a non-pass Result FAIL the contract gate unless Tests records
+> `exception: <reason — citation>`. A missing matrix WARNs at high/critical.
+
+| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |
+|---|-----|----------|-------|-------|-------------------|--------|--------|
+| 1 | REQ-001 | MUST | TASK-{AREA}-001 | {tests} | {type} | {Pass / Fail} | {clean / clean-with-minors / dirty / skipped-by-policy} |
+
+---
+
 ## Agent Contributions
 
 | Agent | Files | Specialization Applied |

@@ -9,7 +9,7 @@
 | **Feature** | TRACEABILITY_MATRIX |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** plan §12 (model §12.1, coverage rules §12.2, verification types §12.3, frontend policy §12.4, acceptance §12.5), §18 PR 6, spine §6 (`requirement_id` must survive Define → PR). Consumes manifest `requirements` refs (Inc 3), Task IDs (Inc 3), review verdicts (Inc 5). Phase 0 carried by the ratified plan (§12.4 answers the benchmark's browser-blindspot defects directly).
@@ -209,4 +209,4 @@ None blocking — ready for Design. Deferred *how*: exact matrix column shapes a
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TRACEABILITY_MATRIX.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TRACEABILITY_MATRIX.md`

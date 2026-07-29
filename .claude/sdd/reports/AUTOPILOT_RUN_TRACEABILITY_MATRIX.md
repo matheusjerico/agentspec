@@ -26,6 +26,10 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T19:05Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM.* live on the v2 manifest) | PASS | 2026-07-29T19:12Z | - | - |
 | J | design | 1 | spec-judge exit 3 (daily budget) | SKIP:exit3 | 2026-07-29T19:12Z | - | - |
+| B | build | 1 | 11/11 v2-manifest tasks; suites 172 linter + 139 root; build+parity exit 0 | PASS | 2026-07-29T21:35Z | - | - |
+| R | build | 1 | Review Verdict clean (1 Important cross-adopter gap + 3 Minor + 1 mid-build heading defect, all fixed in 1/2 rounds; 20-doc archived parity zero-diff) | PASS | 2026-07-29T21:37Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 — matrix 8/8 MUSTs covered, reviews 11/11 matched | PASS | 2026-07-29T21:38Z | - | - |
+| S | ship | 1 | pre-ship checklist 6/6 | PASS | 2026-07-29T21:45Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,9 +42,9 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_TRACEABILITY_MATRIX.md | 0fd63de — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_TRACEABILITY_MATRIX.md | pending | L: PASS · J: SKIP:exit3 · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
-| Build | pending | - | - |
-| Ship | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_TRACEABILITY_MATRIX.md | add644b — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
+| Build | .claude/sdd/reports/BUILD_REPORT_TRACEABILITY_MATRIX.md | pending | B: 11/11 (v2) · R: clean (1/2) · L: PASS + matrix/reviews live |
+| Ship | .claude/sdd/archive/TRACEABILITY_MATRIX/ | pending | S: 6/6 checklist |
 | PR | pending | - | - |
 
 ---

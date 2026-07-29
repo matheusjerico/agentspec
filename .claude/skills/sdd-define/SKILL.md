@@ -94,6 +94,12 @@ Pull structured data from the input using these patterns:
 | **Out of Scope** | "Not including...", "Deferred to...", "Excluded:" |
 | **Assumptions** | "Assuming that...", "We expect...", "If X then...", "Depends on..." |
 
+Assign each goal a stable requirement ID (`REQ-001`, `REQ-002`, … — the
+template's Goals ID column). IDs survive the feature's whole life
+(`traceability.requirement_id_grammar`): Design's task manifest references
+them, the Traceability Matrix keys on them, and the PR reuses them. Never
+renumber on iteration — append.
+
 Classify every goal with MoSCoW priority:
 
 | Priority | Meaning |

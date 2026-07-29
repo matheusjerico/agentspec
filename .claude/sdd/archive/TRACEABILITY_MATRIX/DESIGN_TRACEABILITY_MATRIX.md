@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_TRACEABILITY_MATRIX.md](./DEFINE_TRACEABILITY_MATRIX.md) |
 | **Risk Level** | medium (echo from DEFINE — both phase contracts + three templates/skills) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 | **Design Confidence** | 0.90 — sixth extension of the established pattern; Increment 5's scoping lesson applied from birth |
 
 ---
@@ -410,4 +410,4 @@ Not applicable.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_TRACEABILITY_MATRIX.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_TRACEABILITY_MATRIX.md`
