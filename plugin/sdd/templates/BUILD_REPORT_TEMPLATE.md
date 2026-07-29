@@ -123,12 +123,17 @@
 
 ---
 
-## TDD Evidence (--tdd runs only)
+## TDD Evidence (required when TDD Mode != off)
 
-> One row per code-bearing manifest task. Non-code tasks record `n/a`.
-> Required whenever the Metadata `TDD Mode` is `opt-in` or `required` — the
-> contract gate (`spec-lint --phase build`, sdd-build Step 6.5) enforces it.
-> Omit this section only when `TDD Mode` is `off`.
+> One row per code-bearing manifest task. Required whenever the Metadata
+> `TDD Mode` is `opt-in` or `required` — the contract gate
+> (`spec-lint --phase build`, sdd-build Step 6.5) enforces it. Omit this
+> section only when `TDD Mode` is `off`.
+> Non-code / untestable tasks use the sanctioned grammar
+> `n/a — exception: <category>; verified by: <command>` — categories from
+> `WORKFLOW_CONTRACTS.yaml` → `tdd_policy.exception_categories`; unknown
+> categories FAIL (`BR.tdd_exception_invalid`). In the GREEN column,
+> distinguish new tests, regression runs, and alternative verification.
 
 | Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |
 |------|-----------|-------------------------------|-----------|--------|

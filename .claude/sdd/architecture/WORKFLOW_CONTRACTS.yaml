@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.10.0
+# Version: 3.11.0
 # Date: 2026-07-29
 
-version: "3.10.0"
+version: "3.11.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -466,6 +466,30 @@ task_manifest:
     advisory: [missing_requirements]   # traceability matrix is Increment 6
   write_conflict: "same parallel_group with intersecting create+modify sets"
 
+# Risk-driven TDD policy (Increment 4). Effective mode derived by sdd-build,
+# recorded as the report's TDD Mode row, enforced by spec-lint --phase build
+# (BR.tdd_required_by_risk, BR.tdd_exception_invalid). Reports without a
+# Risk Level row (pre-Increment-2) stay on the adoption path — no new rule
+# fires. The enforcement map below is read by the CLI (wired, not decorative).
+tdd_policy:
+  effective_mode_rule: "strongest of: --tdd flag (opt-in), risk_policy[risk level], any manifest task with execution.tdd == required"
+  risk_policy:
+    low: recommended
+    medium: required_for_logic
+    high: required
+    critical: required
+  no_tdd_flag:
+    dispenses: [low, medium]
+    requires: recorded_justification
+    never: [high, critical]
+  exception_categories: [non_executable_documentation, declarative_configuration, generated_artifact, vendored_content, infrastructure_declaration]
+  red_validity: "a broken RED command, an unrelated import error, or a pre-existing failure is not RED evidence"
+  enforcement:
+    high_critical_off: FAIL
+    medium_off: WARN
+    low_off: silent
+    no_risk_row: silent   # pre-Increment-2 reports — adoption path
+
 
 # =============================================================================
 # PHASE 2: DESIGN
@@ -915,6 +939,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.11.0"
+    date: "2026-07-29"
+    changes:
+      - "RISK_DRIVEN_TDD (Increment 4): new top-level tdd_policy block — effective-mode rule (strongest of --tdd flag, risk_policy[risk level], task execution.tdd == required), risk_policy map (low recommended / medium required_for_logic / high+critical required — the §8.3 TDD row activated), --no-tdd constraints (dispenses low/medium only, recorded justification, never high/critical), 5 sanctioned exception_categories, RED-validity statement (§10.2), enforcement map read by the CLI. BuildReportContract gains BR.tdd_required_by_risk (Risk Level high/critical + TDD Mode off → FAIL; medium + off → WARN; low or no Risk Level row → silent adoption path) and BR.tdd_exception_invalid (TDD Evidence exception tokens validated against exception_categories). sdd-build owns effective-mode derivation + RED validity; /build documents --no-tdd; BUILD_REPORT template documents the exception grammar."
+
   - version: "3.10.0"
     date: "2026-07-29"
     changes:

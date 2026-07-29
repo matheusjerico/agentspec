@@ -129,8 +129,10 @@ For each file, in order:
 └─────────────────────────────────────────────────────┘
 ```
 
-Under `--tdd`, every code-bearing task runs its RED-GREEN cycle first — see
-`--tdd mode` (after Step 5.5) — then this loop's verification.
+When the effective TDD Mode is not `off` — via the `--tdd` flag, the risk
+policy, or a manifest task's `execution.tdd: required` (see "TDD mode
+(risk-driven policy)" after Step 5.5) — every code-bearing task runs its
+RED-GREEN cycle first, then this loop's verification.
 
 Code standards for every file: no inline comments, type hints required,
 self-documenting names, config in YAML over hardcoded values. Verify
@@ -187,27 +189,52 @@ ship exactly like `dirty`.
 Step 5.5 still writes the `## Review Verdict` section, verdict `missing`
 (review not attempted) — the section is never omitted from a BUILD_REPORT.
 
-### `--tdd` mode (opt-in flag on /build)
+### TDD mode (risk-driven policy — `--tdd` / `--no-tdd` flags on /build)
 
-When invoked with `--tdd`, each code-bearing task follows RED-GREEN before
-the standard per-file verification: write the failing test → run it and
-observe the expected failure → write minimal code → run to green. Capture
-the observed RED excerpt and the GREEN run summary per task in the
-BUILD_REPORT `## TDD Evidence` section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
-artifact)`. Without the flag, task execution is unchanged. The report Metadata
-records the mode either way — `TDD Mode: opt-in` with the flag, `TDD Mode: off`
-without it — and the contract gate (Step 6.5) requires the evidence section
-whenever the mode is not `off`.
+**Effective mode is derived, not just flagged** (`WORKFLOW_CONTRACTS.yaml` →
+`tdd_policy.effective_mode_rule`): the strongest of
+
+1. the `--tdd` flag → at least `opt-in`;
+2. `tdd_policy.risk_policy[<Risk Level from the DEFINE echo>]` — `high` and
+   `critical` map to `required`; `medium` expects TDD for logic-bearing
+   changes (`required_for_logic`); `low` is `recommended`;
+3. any manifest task declaring `execution.tdd: required` → `required`.
+
+Record the result in the report Metadata (`TDD Mode: off / opt-in / required`).
+The contract gate (Step 6.5) enforces the floor: a v2 report declaring
+`Risk Level` high/critical with `TDD Mode: off` FAILs
+(`BR.tdd_required_by_risk`); medium + off is a WARN.
+
+**`--no-tdd`** dispenses TDD only at `low`/`medium` risk and only with a
+justification recorded in the Autonomous Decisions table. At `high`/`critical`
+the flag is refused and the refusal recorded — never silently honored
+(`tdd_policy.no_tdd_flag`).
+
+**The cycle per task (when active):** write the failing test → run it and
+observe the expected failure → write the minimal correct change → run to
+green → refactor → run the affected regression scope. Capture the observed
+RED excerpt and the GREEN summary per task in `## TDD Evidence`.
+
+**RED validity (`tdd_policy.red_validity`):** a broken RED command, an
+unrelated import error, or a pre-existing failure is NOT RED evidence — the
+observed failure must correspond to the missing behavior the task delivers.
+
+**Exceptions:** non-code or untestable tasks use the sanctioned grammar
+`n/a — exception: <category>; verified by: <command>`, with categories from
+`tdd_policy.exception_categories`; unknown categories FAIL the gate
+(`BR.tdd_exception_invalid`). Without any flag or policy trigger, task
+execution is unchanged (`TDD Mode: off`).
 
 ### Step 6: Generate the Build Report
 
 Write `.claude/sdd/reports/BUILD_REPORT_{FEATURE}.md`. See Output Obligations.
 
 Contract metadata rows (schema v2 — `build.report_contract`): every new report
-records `Schema Version: 2` and `TDD Mode` in its Metadata table (`opt-in` when
-the build ran with `--tdd`, `off` otherwise; `required` is reserved for
-risk-driven TDD policy). A report without the Schema Version row is treated as
-legacy by the contract gate below.
+records `Schema Version: 2` and `TDD Mode` in its Metadata table. The mode is
+the DERIVED effective mode (`tdd_policy.effective_mode_rule`): `required` when
+the risk level or a manifest task demands it (no flag needed), `opt-in` when
+only the `--tdd` flag activated it, `off` when nothing did. A report without
+the Schema Version row is treated as legacy by the contract gate below.
 
 ### Step 6.5: Contract Gate (mandatory)
 
@@ -440,7 +467,7 @@ PRE-FLIGHT CHECK
 ├─ [ ] Full validation passes (lint, types, test suite)
 ├─ [ ] Whole-branch review dispatched; Review Verdict recorded (clean or clean-with-minors)
 ├─ [ ] Contract gate (Step 6.5): spec-lint --phase build exits 0, or a VISIBLE SKIP is recorded
-├─ [ ] --tdd runs: TDD Evidence table filled for every code-bearing task
+├─ [ ] TDD Mode != off (--tdd or policy-derived): TDD Evidence table filled for every code-bearing task
 ├─ [ ] No TODO comments left in code
 ├─ [ ] No hardcoded secrets or credentials
 ├─ [ ] Error cases handled

@@ -11,7 +11,7 @@
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_RISK_DRIVEN_TDD.md](./DEFINE_RISK_DRIVEN_TDD.md) |
 | **Risk Level** | medium (echo from DEFINE — blast_radius medium: report contract consumed by Build/Ship/Autopilot) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Shipped |
 | **Design Confidence** | 0.90 — fourth extension of a thrice-reviewed pattern |
 
 ---
@@ -377,4 +377,4 @@ Not applicable.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_RISK_DRIVEN_TDD.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_RISK_DRIVEN_TDD.md`

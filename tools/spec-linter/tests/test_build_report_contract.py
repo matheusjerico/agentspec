@@ -316,3 +316,219 @@ def test_demoted_review_verdict_heading_fails_closed() -> None:
     assert verdict.level == Level.FAIL
     section_findings = [f for f in verdict.findings if f.rule == "L2.required_section"]
     assert any(f.field == "review_verdict" for f in section_findings)
+
+
+# --- TDD policy (BR.tdd_required_by_risk / BR.tdd_exception_invalid) --------
+#
+# Opt-in via the constructor's `risk_tdd_policy`/`tdd_exception_categories`
+# params (both None by default, exercised above by every `_contract()`-built
+# test). This block arms both with the real WORKFLOW_CONTRACTS.yaml
+# `tdd_policy` shape and covers the risk-vs-TDD-mode matrix plus exception
+# token validation.
+
+RISK_TDD_POLICY = {
+    "low": "recommended",
+    "medium": "required_for_logic",
+    "high": "required",
+    "critical": "required",
+}
+TDD_EXCEPTION_CATEGORIES = ["non_executable_documentation", "declarative_configuration"]
+
+
+def _contract_with_tdd_policy(legacy_level: Level = Level.WARN) -> BuildReportContract:
+    return BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=legacy_level,
+        risk_tdd_policy=RISK_TDD_POLICY,
+        tdd_exception_categories=TDD_EXCEPTION_CATEGORIES,
+    )
+
+
+def _lint_with_tdd_policy(report: str, legacy_level: Level = Level.WARN) -> Verdict:
+    return lint(report, _contract_with_tdd_policy(legacy_level))
+
+
+def _report_with_risk_and_tdd_mode(risk_level: str, tdd_mode: str) -> str:
+    """VALID_REPORT with its `TDD Mode` value set to `tdd_mode` and a new
+    `Risk Level` metadata row inserted right after it — VALID_REPORT has no
+    Risk Level row of its own, so every case here mutates it in."""
+    return mutate(
+        VALID_REPORT,
+        "| **TDD Mode** | off |\n",
+        f"| **TDD Mode** | {tdd_mode} |\n| **Risk Level** | {risk_level} |\n",
+    )
+
+
+def test_tdd_required_by_risk_high_off_fails() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "off")
+    verdict = _lint_with_tdd_policy(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.tdd_required_by_risk" in _rules(verdict)
+
+
+def test_tdd_required_by_risk_critical_with_parenthetical_fails() -> None:
+    """Risk Level token extraction: only the first whitespace-delimited
+    token is read, so an echoed parenthetical still resolves to 'critical'."""
+    report = _report_with_risk_and_tdd_mode("critical (echo from DEFINE)", "off")
+    verdict = _lint_with_tdd_policy(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.tdd_required_by_risk" in _rules(verdict)
+
+
+def test_tdd_required_by_risk_medium_off_warns() -> None:
+    report = _report_with_risk_and_tdd_mode("medium", "off")
+    verdict = _lint_with_tdd_policy(report)
+    assert verdict.level == Level.WARN
+    findings = [f for f in verdict.findings if f.rule == "BR.tdd_required_by_risk"]
+    assert len(findings) == 1
+    assert findings[0].level == Level.WARN
+
+
+def test_tdd_required_by_risk_low_off_silent() -> None:
+    report = _report_with_risk_and_tdd_mode("low", "off")
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_tdd_required_by_risk_missing_risk_level_row_is_silent_adoption_path() -> None:
+    verdict = _lint_with_tdd_policy(VALID_REPORT)
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_tdd_required_by_risk_high_with_required_mode_and_evidence_is_silent() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "required")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | RED | GREEN |\n"
+        "|------|-----|-------|\n"
+        "| Implement parser | test_parser_rejects_bad_input fails | "
+        "test_parser_rejects_bad_input passes |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_tdd_required_by_risk_unknown_token_is_silent() -> None:
+    report = _report_with_risk_and_tdd_mode("banana", "off")
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_tdd_exception_invalid_fails_for_unsanctioned_token() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | opt-in |")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | RED | GREEN |\n"
+        "|------|-----|-------|\n"
+        "| Implement parser | n/a — exception: vibes; verified by: x | n/a |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "BR.tdd_exception_invalid"]
+    assert len(findings) == 1
+    assert "vibes" in findings[0].message
+
+
+def test_tdd_exception_invalid_passes_for_sanctioned_token() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | opt-in |")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | RED | GREEN |\n"
+        "|------|-----|-------|\n"
+        "| Implement parser | n/a — exception: non_executable_documentation; verified by: x | "
+        "n/a |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_exception_invalid" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_tdd_policy_disarmed_when_constructor_params_are_none() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "off")
+    verdict = _lint(report)  # plain _contract(): risk_tdd_policy/tdd_exception_categories None
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+    assert "BR.tdd_exception_invalid" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_incidental_exception_text_in_red_excerpt_does_not_fire() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "required")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |\n"
+        "|------|-----------|-------------------------------|-----------|--------|\n"
+        '| parse config | tests/test_cfg.py | ValueError("exception: bad_config_format encountered") | 3 passed | - |\n'
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_exception_invalid" not in _rules(verdict)
+
+
+def test_sanctioned_exception_grammar_still_fires_on_unknown_category() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "required")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |\n"
+        "|------|-----------|-------------------------------|-----------|--------|\n"
+        "| docs task | n/a — exception: vibes; verified by: nothing | - | - | - |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_exception_invalid" in _rules(verdict)
+
+
+def test_risk_level_empty_value_is_silent() -> None:
+    verdict = _lint_with_tdd_policy(_report_with_risk_and_tdd_mode("", "off"))
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+
+
+def test_risk_level_capitalized_token_still_fails() -> None:
+    verdict = _lint_with_tdd_policy(_report_with_risk_and_tdd_mode("High", "off"))
+    assert verdict.level == Level.FAIL
+    assert "BR.tdd_required_by_risk" in _rules(verdict)
+
+
+def test_risk_level_template_placeholder_is_silent() -> None:
+    verdict = _lint_with_tdd_policy(
+        _report_with_risk_and_tdd_mode("n/a (legacy DEFINE)", "off")
+    )
+    assert "BR.tdd_required_by_risk" not in _rules(verdict)
+
+
+def test_risk_level_trailing_whitespace_still_warns() -> None:
+    verdict = _lint_with_tdd_policy(_report_with_risk_and_tdd_mode("medium   ", "off"))
+    rules = _rules(verdict)
+    assert "BR.tdd_required_by_risk" in rules
+    assert verdict.level == Level.WARN
+
+
+def test_define_literal_exception_wording_without_na_prefix_fails() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "required")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |\n"
+        "|------|-----------|-------------------------------|-----------|--------|\n"
+        "| docs | exception: vibes — trust me | - | - | - |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_exception_invalid" in _rules(verdict)
+
+
+def test_define_literal_exception_wording_known_category_is_clean() -> None:
+    report = _report_with_risk_and_tdd_mode("high", "required")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |\n"
+        "|------|-----------|-------------------------------|-----------|--------|\n"
+        "| docs | exception: non_executable_documentation — markdownlint docs/ | - | - | - |\n"
+    )
+    verdict = _lint_with_tdd_policy(report)
+    assert "BR.tdd_exception_invalid" not in _rules(verdict)

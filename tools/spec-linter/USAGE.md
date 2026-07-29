@@ -119,6 +119,12 @@ verdict output goes to stdout.
   runs) maps it to WARN with migration guidance, `--legacy-mode fail`
   (Autopilot's invocation) maps it to FAIL. A parseable `dirty`/`missing`
   verdict on a legacy report still FAILs in both modes (fail-closed).
+  With a `tdd_policy` contracts block, two further rules arm:
+  `BR.tdd_required_by_risk` — `Risk Level` high/critical with `TDD Mode: off`
+  FAILs, medium with off WARNs, low or a missing Risk Level row stays silent
+  (pre-risk-profile adoption path) — and `BR.tdd_exception_invalid` — every
+  `exception: <category>` token in the TDD Evidence section must be one of
+  `tdd_policy.exception_categories`. Without the block, both rules are off.
 - **Define-phase risk rules** (`--phase define`): when the contracts YAML
   carries a `risk_profiles` block, the define phase routes to a
   `DefinePhaseContract` — the same FAIL-level section-presence semantics plus

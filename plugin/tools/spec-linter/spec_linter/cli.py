@@ -13,7 +13,11 @@ contracts YAML (`required_sections`, `execution.final_review`,
 presence. `--legacy-mode {warn,fail}` (default `warn`) selects which
 contract-declared severity — `report_contract.legacy.manual` or `.autopilot`
 — applies to a pre-contract (schema-version-less) report; the flag only
-names the consumer context, it never reinterprets a verdict.
+names the consumer context, it never reinterprets a verdict. When the
+contracts data also carries a top-level `tdd_policy` mapping, its
+`risk_policy` and `exception_categories` are passed to the contract too,
+enabling `BR.tdd_required_by_risk`/`BR.tdd_exception_invalid`; absent or
+non-mapping `tdd_policy` leaves both rules off — silent, backward compatible.
 
 `--phase define` is similarly conditional: when the loaded contracts data
 carries a top-level `risk_profiles` mapping, it runs a `DefinePhaseContract`
@@ -149,7 +153,12 @@ def _build_report_contract(
 ) -> BuildReportContract:
     """Assemble the build-phase contract from the `build` block of already-loaded
     contracts data, mirroring `_phase_required_sections`'s validation style for
-    every additional piece (`execution.final_review`, `report_contract`) it needs."""
+    every additional piece (`execution.final_review`, `report_contract`) it needs.
+
+    The top-level `tdd_policy` block is optional: a dict supplies
+    `risk_policy`/`exception_categories` to the contract; anything else
+    (absent, non-dict) passes `None`/`None`, leaving the two `BR.tdd_*` risk
+    rules off."""
     required = _phase_required_sections("build", data, contracts_file)
     block = data["build"]
 
@@ -203,6 +212,38 @@ def _build_report_contract(
             f"level in {contracts_file.name}"
         ) from exc
 
+    risk_tdd_policy: dict[str, str] | None = None
+    tdd_exception_categories: list[str] | None = None
+    tdd_policy = data.get("tdd_policy")
+    if isinstance(tdd_policy, dict):
+        risk_policy = tdd_policy.get("risk_policy")
+        if not isinstance(risk_policy, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in risk_policy.items()
+        ):
+            raise _OperationalError(
+                f"tdd_policy.risk_policy must be a mapping of strings to strings "
+                f"in {contracts_file.name}"
+            )
+        exception_categories = tdd_policy.get("exception_categories")
+        if not isinstance(exception_categories, list) or not all(
+            isinstance(v, str) for v in exception_categories
+        ):
+            raise _OperationalError(
+                f"tdd_policy.exception_categories must be a list of strings "
+                f"in {contracts_file.name}"
+            )
+        # Closed vocabulary: a typo'd obligation ("Required", "requried") would
+        # otherwise fail OPEN — silently disabling the TDD floor for that level.
+        allowed_obligations = {"recommended", "required_for_logic", "required"}
+        unknown = sorted(set(risk_policy.values()) - allowed_obligations)
+        if unknown:
+            raise _OperationalError(
+                f"tdd_policy.risk_policy values must be one of "
+                f"{sorted(allowed_obligations)}; got {unknown} in {contracts_file.name}"
+            )
+        risk_tdd_policy = risk_policy
+        tdd_exception_categories = exception_categories
+
     return BuildReportContract(
         required_sections=required,
         verdicts=verdicts,
@@ -210,6 +251,8 @@ def _build_report_contract(
         schema_version=schema_version,
         tdd_mode_values=tdd_mode_values,
         legacy_level=legacy_level,
+        risk_tdd_policy=risk_tdd_policy,
+        tdd_exception_categories=tdd_exception_categories,
     )
 
 

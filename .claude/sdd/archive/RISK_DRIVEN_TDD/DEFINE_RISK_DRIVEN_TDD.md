@@ -9,7 +9,7 @@
 | **Feature** | RISK_DRIVEN_TDD |
 | **Date** | 2026-07-29 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/plans/2026-07-29-agentspec-incremental-improvements.md` — Increment 4 (§10), PR 4 scope §18 ("activates TDD-by-policy"), dependency §19 (consumes Increment 2's `risk_profile.level` and Increment 3's `execution.tdd`). Phase 0 carried by the ratified plan.
@@ -210,4 +210,4 @@ None blocking — ready for Design. Deferred *how* decision: exact parsing of th
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_RISK_DRIVEN_TDD.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_RISK_DRIVEN_TDD.md`

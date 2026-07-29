@@ -15,6 +15,16 @@ verdict check, and the sole finding carries the caller-supplied
 `build.report_contract.legacy`). Dirty and missing verdicts stay fail-closed
 in both legacy modes — legacy status changes how loudly a report's age is
 flagged, never whether a dirty/missing verdict blocks.
+
+Two more `BR.*` rules — sourced from the top-level `tdd_policy` block — are
+opt-in via the constructor (`None` disables each, backward compatible):
+`BR.tdd_required_by_risk` reads the echoed `Risk Level` metadata row and
+fails high/critical risk with `TDD Mode: off` (fail-closed, § no skipping
+TDD), warns medium risk with the same combination (judgment-scoped, logic
+vs. non-logic changes), and stays silent for low risk or a missing Risk
+Level row — the latter is the pre-Increment-2 adoption path, not a defect.
+`BR.tdd_exception_invalid` fails every `exception: <token>` in the TDD
+Evidence section whose token is not a sanctioned exception category.
 """
 
 from __future__ import annotations
@@ -43,6 +53,14 @@ _RESOLVED = re.compile(r"^(?:fixed|resolved)\s+in\s+\S+", re.IGNORECASE)
 _FRACTION = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
 _INCOMPLETE_MARKERS = ("⏳", "🔄", "❌")
 _BLOCKING_SEVERITIES = {"critical", "important"}
+# Anchored to a table-cell boundary (start-of-line or '|'), optionally prefixed
+# by the template's "n/a —": a cell DECLARING an exception matches, while
+# incidental "exception:" text buried mid-sentence in a RED/GREEN excerpt
+# (e.g. inside a quoted traceback) never does.
+_TDD_EXCEPTION = re.compile(
+    r"(?:^|\|)\s*(?:n/?a\s*[—–-]\s*)?exception:\s*([a-z0-9_]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _slug(text: str) -> str:
@@ -76,6 +94,7 @@ class _ParsedBuildReport:
     task_rows_incomplete: int
     overall_line: str | None
     tdd_evidence_rows: int
+    tdd_evidence_text: str
 
 
 class BuildReportContract:
@@ -87,6 +106,8 @@ class BuildReportContract:
         schema_version: int,
         tdd_mode_values: list[str],
         legacy_level: Level,
+        risk_tdd_policy: dict[str, str] | None = None,
+        tdd_exception_categories: list[str] | None = None,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -95,6 +116,8 @@ class BuildReportContract:
         self._schema_version = schema_version
         self._tdd_mode_values = tdd_mode_values
         self._legacy_level = legacy_level
+        self._risk_tdd_policy = risk_tdd_policy
+        self._tdd_exception_categories = tdd_exception_categories
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
@@ -117,6 +140,7 @@ class BuildReportContract:
 
         tdd_section = _section_after(artifact, "tdd_evidence")
         tdd_evidence_rows = _table_data_rows(tdd_section) if tdd_section is not None else 0
+        tdd_evidence_text = tdd_section if tdd_section is not None else ""
 
         return _ParsedBuildReport(
             headings=headings,
@@ -125,6 +149,7 @@ class BuildReportContract:
             task_rows_incomplete=task_rows_incomplete,
             overall_line=overall_line,
             tdd_evidence_rows=tdd_evidence_rows,
+            tdd_evidence_text=tdd_evidence_text,
         )
 
     @staticmethod
@@ -155,6 +180,10 @@ class BuildReportContract:
         findings.extend(self._check_fix_rounds(parsed))
         findings.extend(self._check_tdd_evidence(parsed))
         findings.extend(self._check_tasks_incomplete(parsed))
+        if self._risk_tdd_policy is not None:
+            findings.extend(self._check_tdd_required_by_risk(parsed))
+        if self._tdd_exception_categories is not None:
+            findings.extend(self._check_tdd_exception_invalid(parsed))
         return findings
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
@@ -349,6 +378,70 @@ class BuildReportContract:
                 )
             ]
         return []
+
+    def _check_tdd_required_by_risk(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """Fail-closed on high/critical risk skipping TDD; WARN medium risk
+        skipping TDD (judgment-scoped: logic-bearing changes only). A
+        missing Risk Level row or an unrecognized level token is the
+        pre-Increment-2 adoption path — silent, not a defect."""
+        risk_row = parsed.metadata.get("risk level")
+        if not risk_row or not risk_row.strip():
+            return []
+        level = risk_row.strip().split()[0].lower()
+        obligation = self._risk_tdd_policy.get(level)
+        if obligation not in ("required", "required_for_logic"):
+            return []
+        mode = (parsed.metadata.get("tdd mode") or "").strip().lower()
+        if mode != "off":
+            return []
+        if obligation == "required":
+            return [
+                Finding(
+                    level=Level.FAIL,
+                    rule="BR.tdd_required_by_risk",
+                    field="TDD Mode",
+                    message=(
+                        f"Risk Level '{level}' cannot skip TDD (fail-closed) — "
+                        "high/critical risk requires TDD Mode opt-in or required"
+                    ),
+                    expected="TDD Mode: opt-in or required",
+                    found="off",
+                )
+            ]
+        return [
+            Finding(
+                level=Level.WARN,
+                rule="BR.tdd_required_by_risk",
+                field="TDD Mode",
+                message=(
+                    f"Risk Level '{level}' expects TDD for logic-bearing changes "
+                    "(judgment call) but TDD Mode is off"
+                ),
+                expected="TDD Mode: opt-in or required",
+                found="off",
+            )
+        ]
+
+    def _check_tdd_exception_invalid(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        findings: list[Finding] = []
+        for m in _TDD_EXCEPTION.finditer(parsed.tdd_evidence_text):
+            token = m.group(1).lower()
+            if token in self._tdd_exception_categories:
+                continue
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="BR.tdd_exception_invalid",
+                    field="TDD Evidence",
+                    message=(
+                        f"TDD exception '{token}' is not a sanctioned exception "
+                        "category"
+                    ),
+                    expected=" | ".join(self._tdd_exception_categories),
+                    found=token,
+                )
+            )
+        return findings
 
     def _check_tasks_incomplete(self, parsed: _ParsedBuildReport) -> list[Finding]:
         overall = parsed.overall_line or ""
