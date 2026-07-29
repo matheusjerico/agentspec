@@ -597,11 +597,12 @@ autopilot:
   command:
     name: "/auto"
     file: ".claude/commands/workflow/auto.md"
-    args: '"<intent>" [--no-brainstorm] [--no-judge] [--no-ship] [--no-pr] [--max-iterations N]'
+    args: '"<intent>" | <path/to/DEFINE_{FEATURE}.md> | FEATURE_NAME — [--no-brainstorm] [--no-judge] [--no-ship] [--no-pr] [--max-iterations N]'
+    pre_ignition: "intent form runs the supervised interview first (sdd-brainstorm + sdd-define, human-answered until 15/15); nothing autonomous exists before Gate I passes"
 
   headless_runner:
     file: "plugin-extras/scripts/autopilot.sh"   # scripts/autopilot.sh in the installed plugin
-    behavior: "policy-free wrapper: preflight, one `claude -p '/auto ...'` invocation, exit-code mapping from the RUN REPORT, best-effort notification"
+    behavior: "policy-free wrapper: preflight (input must be an existing DEFINE_{FEATURE}.md path — a raw intent is a usage error, exit 2), one `claude -p '/auto ...'` invocation, exit-code mapping from the RUN REPORT, best-effort notification"
 
   skill:
     name: "sdd-autopilot"
@@ -619,16 +620,17 @@ autopilot:
       - "❌ Aborted (<gate>)"
 
   gates_consumed:
-    intent_gate: "define.quality_gate.clarity_score (minimum 12) — below gate: abort with gap report, no retry"
+    ignition_gate: "define clarity rubric, RE-SCORED from the DEFINE read from disk at ignition (minimum 15/15; the recorded breakdown is never the sensor) — below gate: abort with gap report, no retry"
+    decision_gate: "design per-decision confidence (threshold 0.80) — interactive: ask the human, un-capped, ledger-recorded; headless: abort with a Pending Decision block the resume re-asks 1:1"
     lint_gate: "contract_enforcement (spec-lint exit codes 0/1/2) — exit 2 is a VISIBLE skip, never an assumed PASS"
     judge_gate: "behavioral_enforcement (spec-judge, standard tier, runs_after lint PASS) — WARN-capped by construction; exit >= 2 is a visible skip"
     build_gate: "build.execution (per-file verification, retry_limit 3) + BUILD_REPORT completeness"
     ship_gate: "ship.pre_ship_checklist — any unmet item aborts"
 
   invariants:
-    - "The run never blocks on human input — every gate maps to proceed / retry-within-budget / abort-with-report"
-    - "All retry budgets bounded; every run terminates"
-    - "FEATURE is derived once at intake and frozen: DEFINE_{FEATURE}.md, DESIGN_{FEATURE}.md, BUILD_REPORT_{FEATURE}.md, and AUTOPILOT_RUN_{FEATURE}.md always share the identical suffix"
+    - "Nothing autonomous exists before Gate I passes; post-ignition a headless run never blocks on human input, and an interactive run pauses only at Gate D (< 0.80 design decisions) — every other gate maps to proceed / retry-within-budget / abort-with-report"
+    - "All retry budgets bounded; every headless run terminates"
+    - "FEATURE is derived once at intake — from the DEFINE filename suffix — and frozen: DEFINE_{FEATURE}.md, DESIGN_{FEATURE}.md, BUILD_REPORT_{FEATURE}.md, and AUTOPILOT_RUN_{FEATURE}.md always share the identical suffix"
     - "All writes on a feat/auto-* branch; the default branch is never committed to by a run"
     - "Ship archives before /create-pr so one PR carries code + docs + archive"
 

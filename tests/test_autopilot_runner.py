@@ -6,6 +6,11 @@ dependency on the developer's own ~/.claude. Each test builds a fresh tmp
 git repo and a minimal PATH containing only the binaries autopilot.sh needs
 (git, bash, sed, grep, cat, mkdir, uname, curl, tee) plus a no-op `osascript`
 stub so macOS never fires a real desktop notification during the suite.
+
+The script's single positional argument is a path to a pre-validated
+DEFINE_{FEATURE}.md document (basename matching ^DEFINE_[A-Z0-9_]+\\.md$),
+resolved relative to the repository root -- not a raw intent string. Use
+`_write_define_file`/the `define_path` fixture to build a valid one.
 """
 from __future__ import annotations
 
@@ -23,6 +28,8 @@ AUTOPILOT_SCRIPT = _REPO_ROOT / "plugin-extras" / "scripts" / "autopilot.sh"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "autopilot"
 BASE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 FAKE_HOME = "/nonexistent-autopilot-test-home"
+DEFINE_RELATIVE_DIR = ".claude/sdd/features"
+DEFAULT_DEFINE_BASENAME = "DEFINE_TESTFEATURE.md"
 
 
 def _make_executable(path: Path, content: str) -> None:
@@ -69,6 +76,19 @@ def _read_recorded_argv(argv_file: Path) -> list[str]:
 def _escape_for_double_quotes(value: str) -> str:
     """Mirror autopilot.sh's escape_for_double_quotes bash function."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _write_define_file(repo: Path, basename: str = DEFAULT_DEFINE_BASENAME) -> str:
+    """Write a minimal DEFINE_{FEATURE}.md fixture under repo and return its
+    repo-relative path, ready to pass as autopilot.sh's positional argument.
+    """
+    define_dir = repo / DEFINE_RELATIVE_DIR
+    define_dir.mkdir(parents=True, exist_ok=True)
+    define_file = define_dir / basename
+    define_file.write_text(
+        "# DEFINE: TESTFEATURE\n\nMinimal DEFINE document for autopilot runner tests.\n"
+    )
+    return f"{DEFINE_RELATIVE_DIR}/{basename}"
 
 
 def _run(
@@ -121,6 +141,12 @@ def git_repo(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.fixture
+def define_path(git_repo: Path) -> str:
+    """Repo-relative path to a valid DEFINE_{FEATURE}.md fixture inside git_repo."""
+    return _write_define_file(git_repo)
+
+
 def _full_path(stub_bin_dir: Path) -> str:
     return f"{stub_bin_dir}:{BASE_PATH}"
 
@@ -132,7 +158,7 @@ class TestHelp:
         result = _run(tmp_path, ["--help"], BASE_PATH)
         assert result.returncode == 0
         for flag in (
-            "--no-brainstorm", "--no-judge", "--no-ship", "--no-pr", "--max-iterations",
+            "--no-judge", "--no-ship", "--no-pr", "--max-iterations",
         ):
             assert flag in result.stdout
         for var in ("AUTOPILOT_TIMEOUT_MIN", "AUTOPILOT_WEBHOOK_URL", "AUTOPILOT_LOG"):
@@ -147,6 +173,47 @@ class TestArgumentValidation:
         assert result.returncode != 0
         assert "Usage:" in result.stderr
         assert "missing required" in result.stderr
+
+    def test_raw_prose_intent_argument_exits_2_without_invoking_claude(
+        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+    ):
+        argv_file = git_repo.parent / "argv.bin"
+        _write_claude_stub(stub_bin_dir, argv_file, status_row=None)
+        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        assert result.returncode == 2
+        assert "DEFINE" in result.stderr
+        assert "/auto" in result.stderr
+        assert not argv_file.exists()
+
+    def test_nonexistent_define_path_exits_2_without_invoking_claude(
+        self, git_repo: Path, stub_bin_dir: Path
+    ):
+        argv_file = git_repo.parent / "argv.bin"
+        _write_claude_stub(stub_bin_dir, argv_file, status_row=None)
+        result = _run(
+            git_repo,
+            [f"{DEFINE_RELATIVE_DIR}/DEFINE_MISSING.md"],
+            _full_path(stub_bin_dir),
+        )
+        assert result.returncode == 2
+        assert "no file found" in result.stderr
+        assert not argv_file.exists()
+
+    @pytest.mark.parametrize("basename", ["notes.md", "define_lower.md"])
+    def test_non_define_basename_exits_2_without_invoking_claude(
+        self, git_repo: Path, stub_bin_dir: Path, basename: str
+    ):
+        argv_file = git_repo.parent / "argv.bin"
+        _write_claude_stub(stub_bin_dir, argv_file, status_row=None)
+        bad_file = git_repo / DEFINE_RELATIVE_DIR / basename
+        bad_file.parent.mkdir(parents=True, exist_ok=True)
+        bad_file.write_text("# Not a DEFINE document\n")
+        result = _run(
+            git_repo, [f"{DEFINE_RELATIVE_DIR}/{basename}"], _full_path(stub_bin_dir)
+        )
+        assert result.returncode == 2
+        assert basename in result.stderr
+        assert not argv_file.exists()
 
 
 # ── preflight checks ─────────────────────────────────────────────────────────
@@ -174,7 +241,8 @@ class TestPreflight:
         repo = tmp_path / "repo"
         repo.mkdir()
         subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
-        result = _run(repo, ["do a thing"], _full_path(stub_bin_dir))
+        define_relpath = _write_define_file(repo)
+        result = _run(repo, [define_relpath], _full_path(stub_bin_dir))
         assert result.returncode == 2
         assert "AgentSpec /auto command not found" in result.stderr
 
@@ -183,48 +251,54 @@ class TestPreflight:
 
 class TestStatusMapping:
     def test_success_status_maps_to_exit_0(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
             stub_bin_dir, argv_file,
             status_row="| **Status** | ✅ Success (PR: https://example.com/pr/1) |",
         )
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
         assert result.returncode == 0
 
     def test_partial_success_status_maps_to_exit_3(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
             stub_bin_dir, argv_file,
             status_row="| **Status** | ⚠ Partial Success |",
         )
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
         assert result.returncode == 3
 
+    @pytest.mark.parametrize(
+        "status_row",
+        [
+            "| **Status** | ❌ Aborted (Gate 0) |",
+            "| **Status** | ❌ Aborted (I) |",
+            "| **Status** | ❌ Aborted (D) |",
+        ],
+        ids=["gate-0", "ignition-rescored", "design-decision-pending"],
+    )
     def test_aborted_status_maps_to_exit_1(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str, status_row: str
     ):
         argv_file = git_repo.parent / "argv.bin"
-        _write_claude_stub(
-            stub_bin_dir, argv_file,
-            status_row="| **Status** | ❌ Aborted (Gate 0) |",
-        )
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        _write_claude_stub(stub_bin_dir, argv_file, status_row=status_row)
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
         assert result.returncode == 1
 
     def test_missing_report_exits_2(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(stub_bin_dir, argv_file, status_row=None)
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
         assert result.returncode == 2
 
     def test_stale_success_report_is_not_reused_when_current_run_writes_none(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         stale_report = git_repo / ".claude/sdd/reports/AUTOPILOT_RUN_OLD.md"
         stale_report.write_text(
@@ -233,43 +307,60 @@ class TestStatusMapping:
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(stub_bin_dir, argv_file, status_row=None)
 
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
 
         assert result.returncode == 2
         assert "no AUTOPILOT_RUN report found" in result.stderr
 
     def test_unreadable_status_row_exits_2(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
             stub_bin_dir, argv_file,
             status_row="Status: totally not a table row",
         )
-        result = _run(git_repo, [intent_complete], _full_path(stub_bin_dir))
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
         assert result.returncode == 2
 
 
 # ── prompt construction ──────────────────────────────────────────────────────
 
 class TestPromptConstruction:
-    def test_intent_with_quotes_and_backslashes_reaches_stub_intact(
+    def test_define_path_with_quotes_and_backslashes_reaches_stub_intact(
         self, git_repo: Path, stub_bin_dir: Path
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
             stub_bin_dir, argv_file, status_row="| **Status** | ✅ Success |",
         )
-        intent = 'Rename "old.txt" to new\\path.txt'
-        result = _run(git_repo, [intent], _full_path(stub_bin_dir))
+        weird_dir = git_repo / 'weird "dir" \\with\\backslash'
+        weird_dir.mkdir(parents=True)
+        define_file = weird_dir / DEFAULT_DEFINE_BASENAME
+        define_file.write_text("# DEFINE: TESTFEATURE\n")
+        define_relpath = str(define_file.relative_to(git_repo))
+        result = _run(git_repo, [define_relpath], _full_path(stub_bin_dir))
         assert result.returncode == 0
         argv = _read_recorded_argv(argv_file)
         assert argv[0] == "-p"
-        expected_prompt = f'/auto "{_escape_for_double_quotes(intent)}"'
+        expected_prompt = f'/auto "{_escape_for_double_quotes(define_relpath)}"'
         assert argv[1] == expected_prompt
 
+    def test_valid_define_path_prompt_is_exact_and_status_maps_to_exit_code(
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
+    ):
+        argv_file = git_repo.parent / "argv.bin"
+        _write_claude_stub(
+            stub_bin_dir, argv_file, status_row="| **Status** | ✅ Success |",
+        )
+        result = _run(git_repo, [define_path], _full_path(stub_bin_dir))
+        assert result.returncode == 0
+        argv = _read_recorded_argv(argv_file)
+        assert argv[0] == "-p"
+        assert argv[1] == f'/auto "{define_path}"'
+
     def test_passthrough_flags_appear_in_recorded_prompt(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
@@ -277,7 +368,7 @@ class TestPromptConstruction:
         )
         result = _run(
             git_repo,
-            [intent_complete, "--no-judge", "--max-iterations", "3"],
+            [define_path, "--no-judge", "--max-iterations", "3"],
             _full_path(stub_bin_dir),
         )
         assert result.returncode == 0
@@ -286,25 +377,42 @@ class TestPromptConstruction:
         assert "--no-judge" in prompt
         assert "--max-iterations 3" in prompt
 
-
-# ── notifications ─────────────────────────────────────────────────────────────
-
-class TestNotifications:
-    def test_unreachable_webhook_does_not_affect_exit_code(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+    def test_passthrough_flags_appended_verbatim_after_quoted_define_path(
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
             stub_bin_dir, argv_file, status_row="| **Status** | ✅ Success |",
         )
         result = _run(
-            git_repo, [intent_complete], _full_path(stub_bin_dir),
+            git_repo,
+            [define_path, "--no-judge", "--max-iterations", "2"],
+            _full_path(stub_bin_dir),
+        )
+        assert result.returncode == 0
+        argv = _read_recorded_argv(argv_file)
+        expected_prompt = f'/auto "{define_path}" --no-judge --max-iterations 2'
+        assert argv[1] == expected_prompt
+
+
+# ── notifications ─────────────────────────────────────────────────────────────
+
+class TestNotifications:
+    def test_unreachable_webhook_does_not_affect_exit_code(
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
+    ):
+        argv_file = git_repo.parent / "argv.bin"
+        _write_claude_stub(
+            stub_bin_dir, argv_file, status_row="| **Status** | ✅ Success |",
+        )
+        result = _run(
+            git_repo, [define_path], _full_path(stub_bin_dir),
             env_overrides={"AUTOPILOT_WEBHOOK_URL": "http://127.0.0.1:9"},
         )
         assert result.returncode == 0
 
     def test_webhook_url_never_printed(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         _write_claude_stub(
@@ -312,14 +420,14 @@ class TestNotifications:
         )
         webhook_url = "http://127.0.0.1:9/unique-marker-path"
         result = _run(
-            git_repo, [intent_complete], _full_path(stub_bin_dir),
+            git_repo, [define_path], _full_path(stub_bin_dir),
             env_overrides={"AUTOPILOT_WEBHOOK_URL": webhook_url},
         )
         assert webhook_url not in result.stdout
         assert webhook_url not in result.stderr
 
     def test_webhook_payload_matches_documented_contract(
-        self, git_repo: Path, stub_bin_dir: Path, intent_complete: str
+        self, git_repo: Path, stub_bin_dir: Path, define_path: str
     ):
         argv_file = git_repo.parent / "argv.bin"
         curl_argv_file = git_repo.parent / "curl-argv.bin"
@@ -334,7 +442,7 @@ class TestNotifications:
         )
 
         result = _run(
-            git_repo, [intent_complete], _full_path(stub_bin_dir),
+            git_repo, [define_path], _full_path(stub_bin_dir),
             env_overrides={"AUTOPILOT_WEBHOOK_URL": "https://hooks.example.test/autopilot"},
         )
 

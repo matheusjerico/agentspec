@@ -175,6 +175,7 @@ Data engineering example:
 | Judge Layer V0 (`/judge`) | Done | OpenRouter cross-model second opinion with budget ledger |
 | `--judge` flag on phase commands | Done | Inline cross-model verification on `/define`, `/design`, `/build` |
 | Autopilot V0 (`/auto` + headless runner) | Done | Full SDD workflow from one intent; gates decide, never a human (archived 2026-07-27) |
+| Autopilot Ignition Gate | Done | Mandatory human-answered interview to 15/15 before ignition; Gate I re-score; Gate D low-confidence fork |
 | Judge Layer V1+ | Planned | Multi-model ensemble, PostToolUse hook, automated escalation |
 | Flag System (progressive enhancement) | Planned | Unified flag vocabulary across phase commands |
 | Add telemetry | Planned | Local usage tracking |
@@ -212,7 +213,7 @@ Data engineering example:
 
 | Command | Purpose |
 |---------|---------|
-| `/auto` | Full workflow autonomously from one intent (Autopilot) |
+| `/auto` | Interview to 15/15, then full workflow autonomously (Autopilot) |
 | `/brainstorm` | Explore ideas (Phase 0) |
 | `/define` | Capture requirements (Phase 1) |
 | `/design` | Create architecture (Phase 2) |
