@@ -127,6 +127,16 @@ verdict output goes to stdout.
   level or dimension vocabulary; override applied without author+rationale;
   declared level below the max declared dimension. Without the block, the
   phase falls back to the plain section check (backward compatible).
+- **Design-phase task-manifest rules** (`--phase design`): when the contracts
+  YAML carries a `task_manifest` block, the design phase routes to a
+  `DesignPhaseContract` — the same FAIL-level section-presence semantics plus
+  `TM.*` validation of the DESIGN's optional `Task Manifest (v2)` YAML.
+  Opt-in and fail-closed for adopters: a *present* manifest FAILs on
+  unparseable YAML, duplicate task ids, dependency cycles, unknown
+  `depends_on` targets, same-`parallel_group` write-set overlaps, and tasks
+  without verification commands (`TM.missing_requirements` alone is WARN).
+  An *absent* manifest is a valid v1 design — zero TM findings. Without the
+  contracts block, the phase falls back to the plain section check.
 - **Schema emission** (`--emit-schema OUT.json`): writes the reference
   contract's JSON Schema to `OUT.json`, creating parent directories as needed
   (combine with a path to also lint; alone it just writes and exits 0).
