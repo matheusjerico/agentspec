@@ -26,6 +26,11 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T23:15Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM + TX live on manifest and matrix, 8/8 REQs mapped) | PASS | 2026-07-29T23:25Z | - | - |
 | J | design | 1 | spec-judge exit 3 (daily budget 12/10) | SKIP:exit3 | 2026-07-29T23:25Z | - | - |
+| R | build | 1 | code-reviewer branch verdict: dirty (1 Critical fail-open + 4 Important) | FAIL | 2026-07-30T00:20Z | - | - |
+| R | build | 2 | fix round 1 verified: 6/7 resolved, F5 residual (2 dangling refs) | FAIL | 2026-07-30T00:45Z | - | - |
+| R | build | 3 | fix round 2 verified: closing verdict clean-with-minors (fails-safe trade-off disclosed) | PASS | 2026-07-30T01:00Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0, zero findings (TDD required; BR.metrics_* validated the first real block) | PASS | 2026-07-30T01:05Z | - | - |
+| B | build | 1 | BUILD_REPORT complete; suites 172 root + 193 spec-linter; plugin build + parity exit 0 | PASS | 2026-07-30T01:05Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,8 +43,8 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_WORKFLOW_METRICS.md | d425d03 — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_WORKFLOW_METRICS.md | pending (this commit) | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
-| Build | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_WORKFLOW_METRICS.md | 002d9a1 — design complete | L: PASS · J: SKIP:exit3 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
+| Build | .claude/sdd/reports/BUILD_REPORT_WORKFLOW_METRICS.md | pending (this commit) | R: clean-with-minors (2/2 rounds) · L: PASS · B: PASS |
 | Ship | pending | - | - |
 | PR | pending | - | - |
 

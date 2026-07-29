@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_WORKFLOW_METRICS.md](DEFINE_WORKFLOW_METRICS.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Complete (Built) |
 | **Risk Level** | medium (echo from DEFINE) |
 
 ---
@@ -46,7 +46,7 @@ One artifact (the report), three consumers, zero new files at runtime. Comparing
 
 | Component | Change |
 |-----------|--------|
-| `WORKFLOW_CONTRACTS.yaml` | New `workflow_metrics` block (schema_version 1, 13-key catalog, availability rule, behavior) + `metrics` wiring under `build.report_contract`; v3.16.0 + history |
+| `WORKFLOW_CONTRACTS.yaml` | New top-level `workflow_metrics` block (schema_version 1, 13-key catalog, availability rule, behavior) — its presence IS the wiring, like `traceability`; v3.16.0 + history |
 | `BUILD_REPORT_TEMPLATE.md` | New **Workflow Metrics** section with the fenced yaml block skeleton |
 | `tools/spec-linter/.../build_report.py` | Metrics extraction (exact-slug section scoping) + 5 BR.metrics rules; None-default constructor params |
 | `tools/spec-linter/.../cli.py` | Wire `metrics` config from the build contract block into `BuildReportContract` |
@@ -81,7 +81,7 @@ task_manifest:
   manifest_version: 2
   tasks:
     - id: TASK-CONTRACT-001
-      title: workflow_metrics block + build.report_contract.metrics wiring + v3.16.0
+      title: workflow_metrics block (top-level, its presence IS the wiring) + v3.16.0
       requirements: [REQ-001, REQ-006, REQ-008]
       depends_on: []
       files: { create: [], modify: [.claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml], tests: [] }
@@ -244,10 +244,10 @@ block = self._fenced_yaml(section, root_key="workflow_metrics")  # same extracti
 
 | Point | Contract |
 |-------|----------|
-| `build.report_contract.metrics` | `{ configured: true, schema_version: 1 }` — opt-in like `manifest_configured`; absent → rules dormant |
+| top-level `workflow_metrics` block | a dict arms `metrics_config={schema_version, catalog}` in the CLI — opt-in exactly like `traceability`; absent/non-dict → all five rules dormant |
 | Legacy mode | Absent block on a configured repo: WARN in `--legacy-mode warn`, FAIL in `fail`; pre-Inc-9 archives are never linted retroactively |
 | Run ledger | Unchanged — metrics complement it; `operational_skips` mirrors SKIP rows (e.g. `J:exit3`) |
-| Plugin | Step 5e parity covers contracts YAML + template + skills; linter code is repo-only (not shipped) as in Inc 1–6 |
+| Plugin | linter code IS shipped in `plugin/tools/spec-linter` (minus tests) — parity enforced by `tests/test_plugin_parity.py`; contracts YAML + templates + skills ride the same build |
 
 ---
 
@@ -275,7 +275,7 @@ block = self._fenced_yaml(section, root_key="workflow_metrics")  # same extracti
 
 ## Configuration
 
-All in `WORKFLOW_CONTRACTS.yaml`: the `workflow_metrics` catalog (single source), plus the two-field wiring under `build.report_contract.metrics`. No env vars, no CLI flags beyond the existing `--phase build --legacy-mode`.
+All in `WORKFLOW_CONTRACTS.yaml`: the top-level `workflow_metrics` block IS both the catalog (single source) and the wiring — the CLI arms the rules when the block is a dict, exactly like `traceability`. No env vars, no CLI flags beyond the existing `--phase build --legacy-mode`.
 
 ---
 

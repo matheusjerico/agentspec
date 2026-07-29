@@ -274,6 +274,26 @@ def _build_report_contract(
 
     matrix_must_coverage = isinstance(data.get("traceability"), dict)
 
+    metrics_config: dict[str, Any] | None = None
+    workflow_metrics = data.get("workflow_metrics")
+    if isinstance(workflow_metrics, dict):
+        metrics_schema_version = workflow_metrics.get("schema_version")
+        if not isinstance(metrics_schema_version, int):
+            raise _OperationalError(
+                f"workflow_metrics.schema_version must be an int in {contracts_file.name}"
+            )
+        catalog = workflow_metrics.get("catalog")
+        if (
+            not isinstance(catalog, list)
+            or not catalog
+            or not all(isinstance(k, str) for k in catalog)
+        ):
+            raise _OperationalError(
+                f"workflow_metrics.catalog must be a non-empty list of strings "
+                f"in {contracts_file.name}"
+            )
+        metrics_config = {"schema_version": metrics_schema_version, "catalog": catalog}
+
     return BuildReportContract(
         required_sections=required,
         verdicts=verdicts,
@@ -285,6 +305,7 @@ def _build_report_contract(
         tdd_exception_categories=tdd_exception_categories,
         task_review_verdicts=task_review_verdicts,
         matrix_must_coverage=matrix_must_coverage,
+        metrics_config=metrics_config,
     )
 
 

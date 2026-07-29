@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.15.0
+# Version: 3.16.0
 # Date: 2026-07-29
 
-version: "3.15.0"
+version: "3.16.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -597,6 +597,37 @@ pr_readiness:
     create_pr: "consumes PR_READY when present; revalidates every mutable item immediately before publication; explicit user intent required (autopilot PR stage = flag-sanctioned intent); no PR_READY -> legacy conduct"
 
 
+# Workflow metrics (Increment 9) — a versioned machine-readable block inside
+# the BUILD_REPORT so two runs compare on rigor, cost, and defects without
+# prose. schema_version bumps on ANY key addition/removal/shape change; the
+# linter validates against this version only. Comparing two runs (§15.4):
+# extract both blocks, assert equal schema_version, diff key-by-key —
+# e.g. run A fix_rounds.final=1 vs run B fix_rounds.final=0.
+workflow_metrics:
+  schema_version: 1
+  # Closed catalog (§15.1): every key below must be PRESENT in an emitted
+  # block; any of them may hold the availability mapping instead of a value.
+  # Unknown top-level keys are findings — typos must not fork the schema.
+  catalog:
+    - feature
+    - phase_duration_seconds
+    - time_to_first_green_seconds
+    - task_count
+    - effective_parallelism
+    - tests_by_type
+    - reopened_tasks
+    - fix_rounds
+    - findings
+    - requirements
+    - operational_skips
+    - risk_overrides
+    - tokens_cost
+  availability_rule: "a value the run did not measure is expressed as {value: null, reason: <why>} — never estimated, interpolated, or copied from a prior run; tokens/cost recorded only when the platform provides them reliably"
+  behavior:
+    build: "emits the block in the report's Workflow Metrics section from measured values only; validates via spec-lint --phase build (BR.metrics_* rules)"
+    ship: "summarizes the block into SHIPPED (metrics table + lessons); metrics NEVER auto-change policies — risk recalibration requires multiple comparable runs AND human review"
+
+
 # =============================================================================
 # PHASE 2: DESIGN
 # =============================================================================
@@ -1045,6 +1076,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.16.0"
+    date: "2026-07-29"
+    changes:
+      - "WORKFLOW_METRICS (Increment 9): new top-level workflow_metrics block — schema_version 1, closed 13-key catalog (§15.1: feature, phase/first-GREEN durations, task count, effective parallelism, tests by type, reopened tasks, fix rounds, findings by severity/stage, requirements coverage, operational skips, risk overrides, tokens/cost), availability rule (unmeasured = value null + reason — never estimated), per-consumer behavior (build emits + validates, ship summarizes; metrics never auto-change policies). BuildReportContract gains 5 opt-in BR.metrics_* rules (missing/parseable/schema_version/key_shape/fabricated), armed by this block like tdd_policy/task_review/traceability; BUILD_REPORT template gains the Workflow Metrics section."
+
   - version: "3.15.0"
     date: "2026-07-29"
     changes:
