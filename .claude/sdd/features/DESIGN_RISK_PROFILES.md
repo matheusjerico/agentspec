@@ -10,7 +10,7 @@
 | **Date** | 2026-07-29 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_RISK_PROFILES.md](./DEFINE_RISK_PROFILES.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Complete (Built) |
 | **Risk Level** | medium (echo from DEFINE — reasons: new warn-only linter logic, limited blast radius) |
 | **Design Confidence** | 0.90 — KB patterns (`python`, `testing`) + specialist matches; Increment 1 precedents reused |
 
@@ -326,4 +326,4 @@ Not applicable — no data pipelines.
 
 ## Next Step
 
-**Ready for:** `/build .claude/sdd/features/DESIGN_RISK_PROFILES.md`
+**Ready for:** `/ship .claude/sdd/features/DEFINE_RISK_PROFILES.md`

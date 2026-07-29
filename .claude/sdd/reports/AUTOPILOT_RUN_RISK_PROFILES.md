@@ -26,6 +26,9 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T16:33Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 | PASS | 2026-07-29T16:40Z | - | - |
 | J | design | 1 | spec-judge exit 3 (daily evaluation budget exhausted: 12/10 calls) | SKIP:exit3 | 2026-07-29T16:41Z | - | - |
+| B | build | 1 | 12/12 tasks; suites 85 linter + 99 root; build-plugin.sh + Step 5e exit 0 | PASS | 2026-07-29T17:20Z | - | - |
+| R | build | 1 | Review Verdict clean (1 Critical + 3 Minor found, all fixed in round 1/2; re-review RESOLVED x4) | PASS | 2026-07-29T17:25Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (warn-mode also 0) | PASS | 2026-07-29T17:26Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,8 +41,8 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_RISK_PROFILES.md | 4f5cdcf — "auto(RISK_PROFILES): ignition" | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_RISK_PROFILES.md | pending | L: PASS · J: SKIP:exit3 (budget) · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
-| Build | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_RISK_PROFILES.md | cb4ce86 — "auto(RISK_PROFILES): design complete" | L: PASS · J: SKIP:exit3 (budget) · D: 0 pauses (4 [ASSUMED] ≥ 0.85) |
+| Build | .claude/sdd/reports/BUILD_REPORT_RISK_PROFILES.md | pending | B: 12/12 · R: clean (1/2 rounds) · L: PASS (fail-mode) |
 | Ship | pending | - | - |
 | PR | pending | - | - |
 
@@ -63,10 +66,10 @@
 
 | Budget | Limit | Spent | Notes |
 |--------|-------|-------|-------|
-| Gate L regenerations | 1 per document | 0 | - |
+| Gate L regenerations | 1 per document | 0 | design + build report both exit 0 first pass |
 | Gate J refinements | 1 per document | 0 | - |
 | Gate D pauses | un-capped (interactive) | 0 | - |
-| Build per-file retries | 3 per file | 0 | - |
+| Build per-file retries | 3 per file | 1 | test_cli.py appended tests: cli.main reference fix (1 retry) |
 | `--max-iterations` cap | default | 0 | L+J only — never Gate D |
 
 ---

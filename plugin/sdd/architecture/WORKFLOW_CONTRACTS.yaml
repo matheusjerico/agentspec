@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.8.0
+# Version: 3.9.0
 # Date: 2026-07-29
 
-version: "3.8.0"
+version: "3.9.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -418,6 +418,34 @@ define:
     - clarity_score_breakdown
     - open_questions
     - revision_history
+
+# Machine-readable risk classification (Increment 2 — Observe/Warn rollout).
+# Derived by sdd-define, echoed by sdd-design, validated by spec-lint
+# --phase define as WARN-only RP.* findings (DefinePhaseContract). NOT part of
+# define.required_sections — extending that list would be Enforce (plan §17.2).
+risk_profiles:
+  rollout: observe_warn          # Enforce is a future, versioned change
+  levels: [low, medium, high, critical]
+  dimensions: [data_loss, security, reversibility, blast_radius, migration]
+  dimension_values: [none, low, medium, high, critical]
+  derivation: "level = max(dimension values), raised to any applicable elevation floor"
+  elevation_rules:
+    - trigger: "authentication or authorization change"
+      floor: high
+    - trigger: "destructive migration"
+      floor: critical
+    - trigger: "production write without rollback"
+      floor: critical
+    - trigger: "new endpoint without sensitive data"
+      floor: medium
+    - trigger: "documentation-only change"
+      typical: low
+  override:
+    required_fields: [author, rationale]
+    invariant: "an override never removes the CRITICAL halt"
+  legacy:
+    effective_level: medium
+    mode: WARN                   # never a silent low
 
 
 # =============================================================================
@@ -868,6 +896,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.9.0"
+    date: "2026-07-29"
+    changes:
+      - "RISK_PROFILES (Increment 2, Observe/Warn): new top-level risk_profiles block — 4 levels, 5 dimensions, dimension_values vocabulary, 5 elevation rules ({trigger, floor} data), override requirements (author+rationale; never removes the CRITICAL halt), legacy default medium/WARN (never silent low), rollout=observe_warn. spec-lint --phase define now routes to DefinePhaseContract (section FAILs unchanged + RP.* WARN-only rules: profile_missing, level_invalid, dimension_invalid, override_unjustified, level_below_dimensions) with silent fallback to SddPhaseContract when the block is absent. DEFINE template gains the Risk Profile YAML section; DESIGN and BUILD_REPORT templates gain Risk Level echo rows. define.required_sections deliberately NOT extended (Enforce deferred per plan §17.2/§18)."
+
   - version: "3.8.0"
     date: "2026-07-29"
     changes:

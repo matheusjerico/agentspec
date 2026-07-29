@@ -10,6 +10,7 @@
 | **Date** | {YYYY-MM-DD} |
 | **Author** | design-agent |
 | **DEFINE** | [DEFINE_{FEATURE}.md](./DEFINE_{FEATURE}.md) |
+| **Risk Level** | {level from the DEFINE Risk Profile — echo with its reasons; never recomputed here} |
 | **Status** | Draft / Ready for Build |
 
 ---
