@@ -123,6 +123,21 @@ task_manifest:
 
 ---
 
+## Traceability Matrix
+
+> Generated here, filled at Build (`WORKFLOW_CONTRACTS.yaml` → `traceability`).
+> One row per MUST/SHOULD requirement; Tasks cite manifest ids; Verification
+> Type from the 10-type vocabulary. MUST rows without Tasks FAIL the design
+> gate. Web-UI features must include the frontend-policy rows (e2e main
+> journey, loading/error/empty states, basic a11y, timezone behavior,
+> URL/state sync) with `e2e` / `browser_accessibility` types.
+
+| # | REQ | Priority | Tasks | Tests | Verification Type |
+|---|-----|----------|-------|-------|-------------------|
+| 1 | REQ-001 | MUST | TASK-{AREA}-001 | {test file / suite} | {unit / integration / contract / e2e / browser_accessibility / security / migration_rollback / data_quality / observability / deterministic_inspection} |
+
+---
+
 ## Agent Assignment Rationale
 
 > Agents discovered from `${CLAUDE_PLUGIN_ROOT}/agents/` - Build phase invokes matched specialists.

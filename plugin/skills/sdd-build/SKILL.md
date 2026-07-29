@@ -256,6 +256,13 @@ execution is unchanged (`TDD Mode: off`).
 
 Write `.claude/sdd/reports/BUILD_REPORT_{FEATURE}.md`. See Output Obligations.
 
+**Fill the Traceability Matrix:** copy the DESIGN's matrix and complete the
+`Result` column from the verification runs and the `Review` column from the
+task-review verdicts. MUST rows need passing tests or a recorded
+`exception: <reason — citation>` in Tests — the contract gate FAILs
+uncovered MUSTs (`BR.must_uncovered`) and WARNs on a missing matrix at
+high/critical (`BR.matrix_missing`).
+
 Contract metadata rows (schema v2 — `build.report_contract`): every new report
 records `Schema Version: 2` and `TDD Mode` in its Metadata table. The mode is
 the DERIVED effective mode (`tdd_policy.effective_mode_rule`): `required` when

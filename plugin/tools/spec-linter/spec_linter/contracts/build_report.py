@@ -37,6 +37,18 @@ like an empty one, since both reduce to the same task-id set difference.
 vocabulary or equals `dirty`, at any risk level, independent of the missing
 rule's severity gate. Neither rule touches `build.execution.final_review`:
 the whole-branch final review stays mandatory regardless of task outcomes.
+
+A fourth opt-in pair — sourced from the top-level `traceability` block
+(Increment 6) — arms via the constructor's `matrix_must_coverage` (`False`
+default disables both): `BR.must_uncovered` fails every MUST row of the
+filled `## Traceability Matrix` (`_section_exact`-scoped, mirroring
+`## Task Reviews`) whose Tests cell is empty/`-` or whose Result cell lacks
+`pass`, unless the Tests cell records the sanctioned `exception: <reason>`
+grammar (Increment 4 precedent) — recorded, auditable, exempt.
+`BR.matrix_missing` warns a wholly absent matrix, but only at high/critical
+Risk Level (the same token `BR.tdd_required_by_risk`/`BR.task_review_missing`
+read) — the adoption ramp for this new artifact; medium/low/an unrecognized
+token/a missing Risk Level row all stay silent.
 """
 
 from __future__ import annotations
@@ -113,6 +125,36 @@ def _table_data_rows(section: str) -> int:
 
 
 @dataclass(frozen=True, slots=True)
+class _MatrixRow:
+    req: str
+    priority: str
+    tests: str
+    result: str
+
+
+# Disclosed residual: rows with fewer cells than the template's column
+# count are dropped without a diagnostic — a truncated MUST row evades the
+# matrix rules (mirrors the Task Reviews parser's documented trade-off).
+def _parse_matrix_rows(section: str) -> list[_MatrixRow]:
+    """Numbered rows of a filled `## Traceability Matrix` section —
+    build-side shape: `| # | REQ | Priority | Tasks | Tests | Verification
+    Type | Result | Review |`. Rows with fewer than 8 cells, or an unfilled
+    template placeholder (`{` in the REQ or Priority cell), are dropped
+    without a diagnostic — mirrors the task-id/verdict placeholder guards
+    used elsewhere in this module."""
+    rows: list[_MatrixRow] = []
+    for m in _NUMBERED_ROW.finditer(section):
+        cells = [c.strip() for c in m.group(0).strip("|").split("|")]
+        if len(cells) < 8:
+            continue
+        req, priority = cells[1], cells[2].lower()
+        if "{" in req or "{" in priority:
+            continue
+        rows.append(_MatrixRow(req=req, priority=priority, tests=cells[4], result=cells[6].lower()))
+    return rows
+
+
+@dataclass(frozen=True, slots=True)
 class _ParsedBuildReport:
     headings: set[str]
     metadata: dict[str, str]
@@ -124,6 +166,8 @@ class _ParsedBuildReport:
     task_ids_executed: set[str]
     task_review_rows: list[tuple[str, str]]
     task_reviews_section_present: bool
+    matrix_rows: list[_MatrixRow]
+    matrix_present: bool
 
 
 class BuildReportContract:
@@ -138,6 +182,7 @@ class BuildReportContract:
         risk_tdd_policy: dict[str, str] | None = None,
         tdd_exception_categories: list[str] | None = None,
         task_review_verdicts: list[str] | None = None,
+        matrix_must_coverage: bool = False,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -149,6 +194,11 @@ class BuildReportContract:
         self._risk_tdd_policy = risk_tdd_policy
         self._tdd_exception_categories = tdd_exception_categories
         self._task_review_verdicts = task_review_verdicts
+        # Opt-in, armed by the CLI only when the top-level `traceability`
+        # block exists: `False` (default) leaves both `BR.*` matrix rules
+        # off — backward compatible with contracts files that predate
+        # Increment 6.
+        self._matrix_must_coverage = matrix_must_coverage
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
@@ -199,6 +249,10 @@ class BuildReportContract:
                     continue  # unfilled template placeholder row, mirror task-id guard
                 task_review_rows.append((task_id, verdict))
 
+        matrix_section = _section_exact(artifact, "traceability_matrix")
+        matrix_present = matrix_section is not None
+        matrix_rows = _parse_matrix_rows(matrix_section) if matrix_section is not None else []
+
         return _ParsedBuildReport(
             headings=headings,
             metadata=metadata,
@@ -210,6 +264,8 @@ class BuildReportContract:
             task_ids_executed=task_ids_executed,
             task_review_rows=task_review_rows,
             task_reviews_section_present=task_reviews_section_present,
+            matrix_rows=matrix_rows,
+            matrix_present=matrix_present,
         )
 
     @staticmethod
@@ -247,6 +303,9 @@ class BuildReportContract:
         if self._task_review_verdicts is not None:
             findings.extend(self._check_task_review_missing(parsed))
             findings.extend(self._check_task_review_dirty(parsed))
+        if self._matrix_must_coverage:
+            findings.extend(self._check_matrix_must_uncovered(parsed))
+            findings.extend(self._check_matrix_missing(parsed))
         return findings
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
@@ -584,6 +643,77 @@ class BuildReportContract:
                     )
                 )
         return findings
+
+    @staticmethod
+    def _check_matrix_must_uncovered(parsed: _ParsedBuildReport) -> list[Finding]:
+        """FAIL every MUST row of the filled Traceability Matrix whose Tests
+        cell is empty/`-` or whose Result cell doesn't contain `pass` —
+        unless the Tests cell records the sanctioned `exception:` grammar
+        (Increment 4 precedent), which exempts the row outright."""
+        findings: list[Finding] = []
+        for row in parsed.matrix_rows:
+            if row.priority != "must":
+                continue
+            tests = row.tests.strip()
+            if tests.lower().startswith("exception:"):
+                continue
+            # Unfilled template placeholders on a MUST row fail closed: the
+            # literal "{Pass / Fail}" contains "pass" and would otherwise
+            # slip through the exact gate built to catch unfilled coverage.
+            if "{" in tests or "{" in row.result:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="BR.must_uncovered",
+                        field=row.req,
+                        message=(
+                            f"requirement '{row.req}' is MUST but its Tests/Result "
+                            "cells are unfilled template placeholders"
+                        ),
+                        expected="Tests and Result filled with real values",
+                        found=f"Tests={tests} Result={row.result}",
+                    )
+                )
+                continue
+            if tests in ("", "-") or "pass" not in row.result:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="BR.must_uncovered",
+                        field=row.req,
+                        message=(
+                            f"requirement '{row.req}' is MUST but is not covered "
+                            "(empty Tests cell or Result not containing 'pass')"
+                        ),
+                        expected="Tests cell filled and Result containing 'pass'",
+                        found=f"Tests={tests or 'empty'} Result={row.result or 'empty'}",
+                    )
+                )
+        return findings
+
+    def _check_matrix_missing(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """WARN a wholly absent filled Traceability Matrix, but only at
+        high/critical Risk Level — the adoption ramp for this new artifact
+        (medium/low, an unrecognized token, or a missing Risk Level row all
+        stay silent)."""
+        if parsed.matrix_present:
+            return []
+        level = self._risk_level_token(parsed)
+        if level not in ("high", "critical"):
+            return []
+        return [
+            Finding(
+                level=Level.WARN,
+                rule="BR.matrix_missing",
+                field="Traceability Matrix",
+                message=(
+                    f"Risk Level '{level}' expects a filled Traceability Matrix "
+                    "section but none is present (adoption ramp)"
+                ),
+                expected="## Traceability Matrix section with filled rows",
+                found="absent",
+            )
+        ]
 
     def _check_tasks_incomplete(self, parsed: _ParsedBuildReport) -> list[Finding]:
         overall = parsed.overall_line or ""

@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.12.0
+# Version: 3.13.0
 # Date: 2026-07-29
 
-version: "3.12.0"
+version: "3.13.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -514,6 +514,35 @@ task_review:
     dirty_verdict: FAIL             # BR.task_review_dirty — any risk level
   invariant: "the whole-branch final review (build.execution.final_review) stays mandatory — task reviews never replace it"
 
+# Traceability & coverage matrix (Increment 6). REQ IDs assigned at Define,
+# matrix generated at Design (TX.* rules, DesignPhaseContract), filled at
+# Build (BR matrix rules, BuildReportContract). Opt-in: no matrix at Design
+# means zero TX findings; a missing matrix at Build WARNs only on
+# high/critical reports (adoption ramp).
+traceability:
+  requirement_id_grammar: "REQ-<n> assigned at Define; legacy refs (MUST-n, SC-n) tolerated in manifests, never orphan-flagged"
+  verification_types: [unit, integration, contract, e2e, browser_accessibility, security, migration_rollback, data_quality, observability, deterministic_inspection]
+  coverage_rules:
+    must_without_task: "FAIL at Design (matrix present)"
+    must_uncovered_at_build: "FAIL — empty Tests or Result != pass, unless Tests starts with 'exception:'"
+    should_deferred: "valid when Tests records 'deferred — <reason>'"
+    could_removed: "free, but record the removal in the DEFINE revision history"
+  frontend_policy:
+    trigger: "the feature ships or changes a web UI"
+    required_rows:
+      - "e2e main-journey flow"
+      - "loading, error, and empty states"
+      - "basic accessibility"
+      - "date/time behavior in the relevant timezone"
+      - "URL / filter / state synchronization (when applicable)"
+  enforcement:
+    design_must_without_task: FAIL
+    design_unknown_type: FAIL
+    design_orphan_reference: WARN
+    build_must_uncovered: FAIL
+    build_matrix_missing_high_critical: WARN   # adoption ramp — new artifact this increment
+    build_matrix_missing_medium_low: silent
+
 
 # =============================================================================
 # PHASE 2: DESIGN
@@ -963,6 +992,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.13.0"
+    date: "2026-07-29"
+    changes:
+      - "TRACEABILITY_MATRIX (Increment 6): new top-level traceability block — REQ-ID grammar (assigned at Define, ID column in the Goals table), 10 verification types (§12.3), coverage rules (§12.2), frontend/browser policy (§12.4: e2e main journey, loading/error/empty states, basic a11y, timezone behavior, URL/state sync), enforcement map. DesignPhaseContract gains TX.must_without_task (FAIL), TX.unknown_type (FAIL), TX.orphan_reference (WARN, REQ-token-scoped — legacy MUST-n/SC-n refs never flag); BuildReportContract gains BR.must_uncovered (FAIL — empty Tests or Result != pass unless the Tests cell records 'exception:') and BR.matrix_missing (WARN at high/critical only — adoption ramp). Matrix sections use exact-slug scoping from birth (Increment 5 lesson). DESIGN template gains the Traceability Matrix section (sdd-design generates; frontend policy conduct); BUILD_REPORT gains the filled matrix (+Result/+Review columns, sdd-build fills from runs and task-review verdicts)."
+
   - version: "3.12.0"
     date: "2026-07-29"
     changes:

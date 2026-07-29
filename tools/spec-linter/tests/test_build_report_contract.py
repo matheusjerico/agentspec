@@ -753,3 +753,134 @@ def test_placeholder_review_row_is_skipped_not_invalid() -> None:
     )
     verdict = _lint_with_task_review(report + placeholder)
     assert "BR.task_review_dirty" not in _rules(verdict)
+
+
+# --- Traceability matrix coverage (BR.must_uncovered / BR.matrix_missing) --
+#
+# Opt-in via the constructor's `matrix_must_coverage` param (`False` by
+# default, exercised above by every plain `_contract()`-built test). This
+# block arms it alone — deliberately not combined with `risk_tdd_policy`/
+# `task_review_verdicts` — covering `BR.must_uncovered` (MUST rows of a
+# filled `## Traceability Matrix` needing a filled Tests cell and a passing
+# Result, unless Tests records the sanctioned `exception:` grammar) and
+# `BR.matrix_missing` (a wholly absent matrix WARNing only at high/critical
+# Risk Level).
+
+
+def _contract_with_matrix(legacy_level: Level = Level.WARN) -> BuildReportContract:
+    return BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=legacy_level,
+        matrix_must_coverage=True,
+    )
+
+
+def _lint_with_matrix(report: str, legacy_level: Level = Level.WARN) -> Verdict:
+    return lint(report, _contract_with_matrix(legacy_level))
+
+
+def _filled_matrix_section(rows: list[tuple[str, str, str, str]]) -> str:
+    """Render a filled `## Traceability Matrix` section: build-side 8-cell
+    rows `| # | REQ | Priority | Tasks | Tests | Verification Type | Result |
+    Review |` — only cells 1/2/4/6 (REQ/Priority/Tests/Result) are read by
+    the parser; Tasks (3) and Verification Type (5) are filled with
+    placeholders to mirror the template shape. `rows` is
+    `(req, priority, tests, result)`."""
+    lines = [
+        "\n## Traceability Matrix\n",
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |",
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|",
+    ]
+    lines.extend(
+        f"| {i} | {req} | {priority} | TASK-A | {tests} | unit | {result} | clean |"
+        for i, (req, priority, tests, result) in enumerate(rows, start=1)
+    )
+    return "\n".join(lines) + "\n"
+
+
+def test_must_row_with_tests_and_pass_result_has_no_finding() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "MUST", "tests/test_parser.py", "Pass")]
+    )
+    verdict = _lint_with_matrix(report)
+    assert "BR.must_uncovered" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_must_row_with_dash_tests_fails_must_uncovered() -> None:
+    report = VALID_REPORT + _filled_matrix_section([("REQ-1", "MUST", "-", "Pass")])
+    verdict = _lint_with_matrix(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.must_uncovered" in _rules(verdict)
+
+
+def test_must_row_with_fail_result_fails_must_uncovered() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "MUST", "tests/test_parser.py", "Fail")]
+    )
+    verdict = _lint_with_matrix(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.must_uncovered" in _rules(verdict)
+
+
+def test_must_row_with_exception_grammar_is_exempt() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "MUST", "exception: contractual — cite", "Fail")]
+    )
+    verdict = _lint_with_matrix(report)
+    assert "BR.must_uncovered" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_should_row_with_empty_tests_has_no_finding() -> None:
+    report = VALID_REPORT + _filled_matrix_section([("REQ-2", "SHOULD", "", "Fail")])
+    verdict = _lint_with_matrix(report)
+    assert "BR.must_uncovered" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_matrix_missing_warns_high_risk_silent_otherwise() -> None:
+    high_no_matrix = _report_with_risk_level(VALID_REPORT, "high")
+    verdict = _lint_with_matrix(high_no_matrix)
+    assert verdict.level == Level.WARN
+    assert "BR.matrix_missing" in _rules(verdict)
+
+    medium_no_matrix = _report_with_risk_level(VALID_REPORT, "medium")
+    verdict = _lint_with_matrix(medium_no_matrix)
+    assert "BR.matrix_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+    high_with_matrix = _report_with_risk_level(VALID_REPORT, "high") + _filled_matrix_section(
+        [("REQ-1", "MUST", "tests/test_parser.py", "Pass")]
+    )
+    verdict = _lint_with_matrix(high_with_matrix)
+    assert "BR.matrix_missing" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_unfilled_placeholder_must_row_fails_coverage() -> None:
+    report = _report_with_risk_level(
+        _report_with_task_ids(VALID_REPORT, "TASK-A-001", "TASK-B-001"), "high"
+    )
+    report += (
+        "\n## Traceability Matrix\n\n"
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |\n"
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|\n"
+        "| 1 | REQ-001 | MUST | TASK-A-001 | {tests} | {type} | {Pass / Fail} | {clean} |\n"
+    )
+    verdict = lint(report, _contract_with_matrix())
+    assert "BR.must_uncovered" in [f.rule for f in verdict.findings]
+
+
+def test_decoy_matrix_heading_does_not_mask_missing_matrix() -> None:
+    report = _report_with_risk_level(
+        _report_with_task_ids(VALID_REPORT, "TASK-A-001", "TASK-B-001"), "high"
+    )
+    report += "\n## Traceability Matrix Notes\n\nProse only.\n"
+    verdict = lint(report, _contract_with_matrix())
+    assert "BR.matrix_missing" in [f.rule for f in verdict.findings]

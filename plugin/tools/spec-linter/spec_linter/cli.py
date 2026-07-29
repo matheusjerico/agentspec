@@ -32,12 +32,18 @@ back silently to the plain `SddPhaseContract` path — backward compatible
 with contracts files that predate the risk-profile rollout.
 
 `--phase design` follows the same conditional shape: when the loaded
-contracts data carries a top-level `task_manifest` mapping, it runs a
-`DesignPhaseContract` instead, layering FAIL-level `TM.*` executable-manifest
-rules (opt-in per DESIGN document — absent v2 block is v1-silent, zero `TM.*`
-findings) on top of `L2.required_section`; malformed `task_manifest` subkeys
-are an operational ERROR (exit 2). Absent `task_manifest` falls back silently
-to `SddPhaseContract`, identical to the define/risk_profiles pattern.
+contracts data carries a top-level `task_manifest` mapping, a top-level
+`traceability` mapping, or both, it runs a `DesignPhaseContract` instead,
+layering FAIL-level `TM.*` executable-manifest rules (opt-in per DESIGN
+document — absent v2 block is v1-silent, zero `TM.*` findings) and/or
+FAIL/WARN `TX.*` traceability-matrix rules (Increment 6, opt-in per DESIGN
+document the same way) on top of `L2.required_section`; malformed
+`task_manifest`/`traceability` subkeys are an operational ERROR (exit 2).
+When only one of the two blocks is present, the other's rule family stays
+structurally silent (`TM.*` via empty vocabularies, `TX.*` via
+`verification_types=None`). Absent BOTH `task_manifest` and `traceability`
+falls back silently to `SddPhaseContract`, identical to the
+define/risk_profiles pattern.
 
 Exit codes form a three-way contract:
 
@@ -163,7 +169,12 @@ def _build_report_contract(
     (absent, non-dict) passes `None`/`None`, leaving the two `BR.tdd_*` risk
     rules off. The top-level `task_review` block is optional the same way: a
     dict supplies `verdicts`, arming `BR.task_review_missing`/
-    `BR.task_review_dirty`; anything else passes `None`, leaving both off."""
+    `BR.task_review_dirty`; anything else passes `None`, leaving both off.
+    The top-level `traceability` block (Increment 6) is optional the same
+    way: a dict arms `matrix_must_coverage=True`, enabling `BR.must_uncovered`/
+    `BR.matrix_missing`; anything else leaves both off. Unlike `tdd_policy`/
+    `task_review`, no subkey validation is needed here — the build side only
+    needs the boolean "is traceability configured", not a vocabulary."""
     required = _phase_required_sections("build", data, contracts_file)
     block = data["build"]
 
@@ -261,6 +272,8 @@ def _build_report_contract(
             )
         task_review_verdicts = review_verdicts
 
+    matrix_must_coverage = isinstance(data.get("traceability"), dict)
+
     return BuildReportContract(
         required_sections=required,
         verdicts=verdicts,
@@ -271,6 +284,7 @@ def _build_report_contract(
         risk_tdd_policy=risk_tdd_policy,
         tdd_exception_categories=tdd_exception_categories,
         task_review_verdicts=task_review_verdicts,
+        matrix_must_coverage=matrix_must_coverage,
     )
 
 
@@ -339,37 +353,62 @@ def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> Define
 
 def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> DesignPhaseContract:
     """Assemble the design-phase contract from `design.required_sections` plus
-    the top-level `task_manifest` block of already-loaded contracts data,
-    mirroring `_define_phase_contract`'s validation style for every piece it
-    needs."""
-    required = _phase_required_sections("design", data, contracts_file)
-    block = data["task_manifest"]
+    the top-level `task_manifest` and `traceability` blocks of already-loaded
+    contracts data, mirroring `_define_phase_contract`'s validation style for
+    every piece it needs.
 
-    required_task_fields = block.get("required_task_fields")
-    if not isinstance(required_task_fields, list) or not all(
-        isinstance(v, str) for v in required_task_fields
-    ):
-        raise _OperationalError(
-            f"task_manifest.required_task_fields must be a list of strings in {contracts_file.name}"
-        )
-    files_keys = block.get("files_keys")
-    if not isinstance(files_keys, list) or not all(isinstance(v, str) for v in files_keys):
-        raise _OperationalError(
-            f"task_manifest.files_keys must be a list of strings in {contracts_file.name}"
-        )
-    verification_keys = block.get("verification_keys")
-    if not isinstance(verification_keys, list) or not all(
-        isinstance(v, str) for v in verification_keys
-    ):
-        raise _OperationalError(
-            f"task_manifest.verification_keys must be a list of strings in {contracts_file.name}"
-        )
+    The two top-level blocks are independently optional and independently
+    arm their rule families — the caller's routing gate only requires at
+    least one to be present. A dict `task_manifest` supplies the `TM.*`
+    vocabularies (`required_task_fields`/`files_keys`/`verification_keys`);
+    when it's absent, empty-list defaults keep `TM.*` structurally silent (a
+    v1 DESIGN with no manifest section never reaches `_check_manifest`
+    regardless). A dict `traceability` supplies `verification_types`, arming
+    `TX.*`; when it's absent, `verification_types=None` leaves `TX.*` off —
+    identical posture to every other opt-in family in this CLI."""
+    required = _phase_required_sections("design", data, contracts_file)
+    block = data.get("task_manifest")
+
+    if isinstance(block, dict):
+        required_task_fields = block.get("required_task_fields")
+        if not isinstance(required_task_fields, list) or not all(
+            isinstance(v, str) for v in required_task_fields
+        ):
+            raise _OperationalError(
+                f"task_manifest.required_task_fields must be a list of strings in {contracts_file.name}"
+            )
+        files_keys = block.get("files_keys")
+        if not isinstance(files_keys, list) or not all(isinstance(v, str) for v in files_keys):
+            raise _OperationalError(
+                f"task_manifest.files_keys must be a list of strings in {contracts_file.name}"
+            )
+        verification_keys = block.get("verification_keys")
+        if not isinstance(verification_keys, list) or not all(
+            isinstance(v, str) for v in verification_keys
+        ):
+            raise _OperationalError(
+                f"task_manifest.verification_keys must be a list of strings in {contracts_file.name}"
+            )
+    else:
+        required_task_fields, files_keys, verification_keys = [], [], []
+
+    verification_types: list[str] | None = None
+    traceability = data.get("traceability")
+    if isinstance(traceability, dict):
+        types = traceability.get("verification_types")
+        if not isinstance(types, list) or not all(isinstance(v, str) for v in types):
+            raise _OperationalError(
+                f"traceability.verification_types must be a list of strings in {contracts_file.name}"
+            )
+        verification_types = types
 
     return DesignPhaseContract(
         required_sections=required,
         required_task_fields=required_task_fields,
         files_keys=files_keys,
         verification_keys=verification_keys,
+        verification_types=verification_types,
+        manifest_configured=isinstance(block, dict),
     )
 
 
@@ -381,7 +420,9 @@ def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) 
         contract = _build_report_contract(data, contracts_file, legacy_mode)
     elif phase == "define" and isinstance(data.get("risk_profiles"), dict):
         contract = _define_phase_contract(data, contracts_file)
-    elif phase == "design" and isinstance(data.get("task_manifest"), dict):
+    elif phase == "design" and (
+        isinstance(data.get("task_manifest"), dict) or isinstance(data.get("traceability"), dict)
+    ):
         contract = _design_phase_contract(data, contracts_file)
     else:
         required = _phase_required_sections(phase, data, contracts_file)

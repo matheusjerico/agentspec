@@ -187,6 +187,22 @@ section "Task Manifest (v2)"; schema vocabularies in `WORKFLOW_CONTRACTS.yaml`
   v2 adopters). Omitting the section is valid: the design is v1 and Build
   infers tasks as before.
 
+### Step 4.8: Generate the Traceability Matrix
+
+From the DEFINE's requirement IDs and the task manifest's `requirements`
+refs, generate the template's Traceability Matrix: one row per MUST/SHOULD —
+REQ, priority, implementing task ids, planned tests, and a verification type
+from `traceability.verification_types`. Rules the design gate enforces for
+adopters: a MUST row without tasks FAILs; unknown types FAIL; unresolved
+references WARN. SHOULD rows may record `deferred — <reason>` in Tests.
+
+**Frontend/browser policy (`traceability.frontend_policy`):** when the
+feature ships or changes a web UI, the matrix MUST include rows for the e2e
+main journey, loading/error/empty states, basic accessibility, timezone-
+relevant date behavior, and URL/filter/state synchronization (when
+applicable), typed `e2e` / `browser_accessibility` — detect the project's
+existing runner and cite it in Tests.
+
 ### Step 5: Define Code Patterns
 
 1. Load patterns from the KB domains
@@ -250,6 +266,7 @@ PRE-FLIGHT CHECK
 ├─ [ ] At least one decision with full rationale (inline ADR)
 ├─ [ ] Complete file manifest (all files listed)
 ├─ [ ] Task Manifest v2 derived (DAG, verification commands, disjoint write-sets) — or v1 explicitly chosen
+├─ [ ] Traceability Matrix generated (MUSTs tasked; frontend-policy rows when a web UI exists)
 ├─ [ ] Agent assigned to each file (or marked general)
 ├─ [ ] Every manifest row carries a citation — gaps resolved via specialist-autoprovision
 ├─ [ ] Code patterns are syntactically correct and copy-paste ready

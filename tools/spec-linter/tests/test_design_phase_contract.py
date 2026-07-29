@@ -348,3 +348,171 @@ def test_task_manifest_key_that_is_not_a_mapping_is_unparseable() -> None:
     verdict = _lint(doc)
     assert verdict.level == Level.FAIL
     assert "TM.unparseable" in _rules(verdict)
+
+
+# --- Traceability matrix (TX.must_without_task / TX.unknown_type / ---------
+# TX.orphan_reference) -------------------------------------------------------
+#
+# Opt-in via the constructor's `verification_types` param (`None` by default,
+# exercised above by every plain `_contract()`-built test — a DESIGN with a
+# Traceability Matrix section but no configured vocabulary stays TX-silent).
+# This block arms it with the real WORKFLOW_CONTRACTS.yaml
+# `traceability.verification_types` 10-type vocabulary, covering the
+# must-without-task / unknown-type / orphan-reference rule family layered on
+# top of VALID_DESIGN's existing TASK-A/B/C v2 manifest.
+
+VERIFICATION_TYPES = [
+    "unit",
+    "integration",
+    "contract",
+    "e2e",
+    "browser_accessibility",
+    "security",
+    "migration_rollback",
+    "data_quality",
+    "observability",
+    "deterministic_inspection",
+]
+
+
+def _contract_with_traceability() -> DesignPhaseContract:
+    return DesignPhaseContract(
+        required_sections=REQUIRED_SECTIONS,
+        required_task_fields=REQUIRED_TASK_FIELDS,
+        files_keys=FILES_KEYS,
+        verification_keys=VERIFICATION_KEYS,
+        verification_types=VERIFICATION_TYPES,
+    )
+
+
+def _lint_with_traceability(doc: str) -> Verdict:
+    return lint(doc, _contract_with_traceability())
+
+
+def _matrix_section(rows: list[tuple[str, str, str, str]]) -> str:
+    """Render a `## Traceability Matrix` section: design-side 6-cell rows
+    `| # | REQ | Priority | Tasks | Tests | Verification Type |` — only
+    cells 1/2/3/5 (REQ/Priority/Tasks/Verification Type) are read by the
+    parser; the Tests cell (4) is filled with a placeholder to mirror the
+    template shape. `rows` is `(req, priority, tasks, verification_type)`."""
+    lines = [
+        "\n## Traceability Matrix\n",
+        "| # | REQ | Priority | Tasks | Tests | Verification Type |",
+        "|---|-----|----------|-------|-------|-------------------|",
+    ]
+    lines.extend(
+        f"| {i} | {req} | {priority} | {tasks} | tests | {vtype} |"
+        for i, (req, priority, tasks, vtype) in enumerate(rows, start=1)
+    )
+    return "\n".join(lines) + "\n"
+
+
+# Refs resolve to VALID_DESIGN's existing manifest: TASK-A/B/C, whose
+# `requirements` are REQ-1/REQ-2/REQ-3 respectively — a matrix that neither
+# direction of `TX.orphan_reference` flags.
+VALID_MATRIX_ROWS = [
+    ("REQ-1", "MUST", "TASK-A", "unit"),
+    ("REQ-2", "MUST", "TASK-B", "integration"),
+    ("REQ-3", "SHOULD", "TASK-C", "contract"),
+]
+
+VALID_DESIGN_WITH_MATRIX = mutate(
+    VALID_DESIGN,
+    "## Code Patterns",
+    _matrix_section(VALID_MATRIX_ROWS) + "\n## Code Patterns",
+)
+
+
+def test_valid_matrix_passes_with_zero_findings() -> None:
+    verdict = _lint_with_traceability(VALID_DESIGN_WITH_MATRIX)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_must_row_with_dash_tasks_fails_must_without_task() -> None:
+    doc = mutate(
+        VALID_DESIGN_WITH_MATRIX,
+        "| 1 | REQ-1 | MUST | TASK-A | tests | unit |",
+        "| 1 | REQ-1 | MUST | - | tests | unit |",
+    )
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.FAIL
+    assert "TX.must_without_task" in _rules(verdict)
+
+
+def test_unknown_verification_type_fails() -> None:
+    doc = mutate(
+        VALID_DESIGN_WITH_MATRIX,
+        "| 1 | REQ-1 | MUST | TASK-A | tests | unit |",
+        "| 1 | REQ-1 | MUST | TASK-A | tests | vibes |",
+    )
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.FAIL
+    assert "TX.unknown_type" in _rules(verdict)
+
+
+def test_tasks_cell_citing_unknown_task_id_warns_not_fails() -> None:
+    doc = mutate(
+        VALID_DESIGN_WITH_MATRIX,
+        "| 1 | REQ-1 | MUST | TASK-A | tests | unit |",
+        "| 1 | REQ-1 | MUST | TASK-GHOST | tests | unit |",
+    )
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.WARN
+    assert "TX.orphan_reference" in _rules(verdict)
+    assert "TX.must_without_task" not in _rules(verdict)
+
+
+def test_manifest_requirement_not_in_matrix_warns_but_legacy_ref_does_not() -> None:
+    doc = mutate(
+        VALID_DESIGN_WITH_MATRIX,
+        'requirements: ["REQ-3"]',
+        'requirements: ["REQ-3", "REQ-999", "MUST-1"]',
+    )
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.WARN
+    orphans = [f for f in verdict.findings if f.rule == "TX.orphan_reference"]
+    assert len(orphans) == 1
+    assert orphans[0].found == "REQ-999"
+
+
+def test_no_matrix_section_is_tx_silent() -> None:
+    verdict = _lint_with_traceability(VALID_DESIGN)
+    assert verdict.level == Level.PASS
+    assert not any(f.rule.startswith("TX.") for f in verdict.findings)
+
+
+def test_rules_disarmed_with_broken_matrix_stays_tx_silent() -> None:
+    doc = mutate(
+        VALID_DESIGN_WITH_MATRIX,
+        "| 1 | REQ-1 | MUST | TASK-A | tests | unit |",
+        "| 1 | REQ-1 | MUST | - | tests | vibes |",
+    )
+    verdict = _lint(doc)  # plain _contract(): verification_types=None
+    assert verdict.level == Level.PASS
+    assert not any(f.rule.startswith("TX.") for f in verdict.findings)
+
+
+def test_manifest_not_configured_keeps_tm_silent_even_with_manifest_section() -> None:
+    doc = mutate(VALID_DESIGN, 'id: TASK-C', 'id: TASK-A')  # duplicate id — would FAIL if armed
+    contract = DesignPhaseContract(
+        required_sections=REQUIRED_SECTIONS,
+        required_task_fields=[],
+        files_keys=[],
+        verification_keys=[],
+        verification_types=None,
+        manifest_configured=False,
+    )
+    verdict = lint(doc, contract)
+    assert not any(f.rule.startswith("TM.") for f in verdict.findings)
+    assert verdict.level == Level.PASS
+
+
+def test_decoy_traceability_matrix_heading_does_not_shadow() -> None:
+    decoy = (
+        "\n## Traceability Matrix Notes\n\n"
+        "| 1 | REQ-999 | MUST | - | - | vibes |\n"
+    )
+    doc = VALID_DESIGN_WITH_MATRIX.replace("## Traceability Matrix", decoy + "## Traceability Matrix", 1)
+    verdict = lint(doc, _contract_with_traceability())
+    assert not any(f.rule.startswith("TX.") for f in verdict.findings)
