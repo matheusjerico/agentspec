@@ -183,11 +183,48 @@ the standard per-file verification: write the failing test → run it and
 observe the expected failure → write minimal code → run to green. Capture
 the observed RED excerpt and the GREEN run summary per task in the
 BUILD_REPORT `## TDD Evidence` section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
-artifact)`. Without the flag, task execution is unchanged.
+artifact)`. Without the flag, task execution is unchanged. The report Metadata
+records the mode either way — `TDD Mode: opt-in` with the flag, `TDD Mode: off`
+without it — and the contract gate (Step 6.5) requires the evidence section
+whenever the mode is not `off`.
 
 ### Step 6: Generate the Build Report
 
 Write `.claude/sdd/reports/BUILD_REPORT_{FEATURE}.md`. See Output Obligations.
+
+Contract metadata rows (schema v2 — `build.report_contract`): every new report
+records `Schema Version: 2` and `TDD Mode` in its Metadata table (`opt-in` when
+the build ran with `--tdd`, `off` otherwise; `required` is reserved for
+risk-driven TDD policy). A report without the Schema Version row is treated as
+legacy by the contract gate below.
+
+### Step 6.5: Contract Gate (mandatory)
+
+Validate the report just written against the Build phase contract — artifact
+`BUILD_REPORT_{FEATURE}.md`, phase `build`:
+
+```bash
+tools/spec-linter/spec-lint .claude/sdd/reports/BUILD_REPORT_{FEATURE}.md --phase build \
+  --contracts-file .claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml
+```
+
+Run it as `tools/spec-linter/USAGE.md` documents, and act on the exit code
+exactly as defined there:
+
+| Exit | Action |
+|------|--------|
+| 0 | Proceed to Step 7. A WARN (e.g. a legacy report) is recorded VISIBLY in the report before proceeding |
+| 1 | The build does NOT declare completion: fix the report — or the state it misreports — and re-lint once; still FAIL → Final Status `❌ BLOCKED`, open findings recorded as Blockers |
+| >= 2 | Record a VISIBLE SKIP in the report and proceed — never assume PASS |
+
+The exit-code contract and verdict semantics are owned by
+`tools/spec-linter/USAGE.md` and the `contract_enforcement` block of
+`.claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml`, which also declares this
+phase's binding (`build.required_sections` + `build.report_contract` semantic
+rules — verdict value, open blocking findings, fix-round budget, TDD evidence,
+task completeness, legacy detection). Manual runs use the default
+`--legacy-mode warn`; only Autopilot invokes `--legacy-mode fail` (Gate L
+policy, sdd-autopilot). Ship re-runs this same validation before archiving.
 
 ### Step 7: Update Statuses and Hand Off
 
@@ -391,6 +428,7 @@ PRE-FLIGHT CHECK
 ├─ [ ] Each file verified (lint, types, tests)
 ├─ [ ] Full validation passes (lint, types, test suite)
 ├─ [ ] Whole-branch review dispatched; Review Verdict recorded (clean or clean-with-minors)
+├─ [ ] Contract gate (Step 6.5): spec-lint --phase build exits 0, or a VISIBLE SKIP is recorded
 ├─ [ ] --tdd runs: TDD Evidence table filled for every code-bearing task
 ├─ [ ] No TODO comments left in code
 ├─ [ ] No hardcoded secrets or credentials

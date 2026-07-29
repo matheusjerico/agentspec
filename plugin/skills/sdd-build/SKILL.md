@@ -118,6 +118,9 @@ For each file, in order:
 └─────────────────────────────────────────────────────┘
 ```
 
+Under `--tdd`, every code-bearing task runs its RED-GREEN cycle first — see
+`--tdd mode` (after Step 5.5) — then this loop's verification.
+
 Code standards for every file: no inline comments, type hints required,
 self-documenting names, config in YAML over hardcoded values. Verify
 incrementally — after each file, not only at the end. Fix forward: if something
@@ -136,9 +139,92 @@ pytest              # tests
 Substitute the project's configured linter, type checker, and test runner when
 it is not a Python project.
 
+### Step 5.5: Whole-Branch Adversarial Review (mandatory)
+
+Contract: `WORKFLOW_CONTRACTS.yaml` → `build.execution.final_review`.
+
+After full validation passes, dispatch the review — never skip it, never
+self-review instead:
+
+1. Compute the branch scope: `BASE=$(git merge-base <default-branch> HEAD)`.
+   If no merge-base is computable (no default branch, detached or unrelated
+   history), fall back to reviewing every manifest file in full instead of
+   a diff.
+2. Dispatch `code-reviewer` via the Task tool with: the `BASE..HEAD` diff,
+   the DEFINE's acceptance tests as the review lens, and the severity
+   taxonomy Critical / Important / Minor.
+3. Record the outcome in the BUILD_REPORT `## Review Verdict` section.
+
+| Findings | Action |
+|----------|--------|
+| None | Verdict `clean` → Step 6 |
+| Minor only | Record each; verdict `clean-with-minors` → Step 6 |
+| Critical/Important | Fix loop (below) |
+
+**Fix loop (budget 2 rounds, supervised and autonomous alike):** one round =
+fix the findings → re-run the tests covering the amended code → scoped
+re-review of the fix diff only. All findings resolved → verdict `clean` (or
+`clean-with-minors`). Budget exhausted with open findings → verdict `dirty`,
+open findings recorded as Blockers, recommend `/iterate`; under `/auto`,
+Gate R (sdd-autopilot) maps this to abort-with-gap-report.
+
+**Reviewer dispatch failure:** retry once; still failing → verdict `missing`
+with a visible WARN — never an assumed `clean`. A `missing` verdict blocks
+ship exactly like `dirty`.
+
+**Build halted before the review:** a build that stops on a blocker before
+Step 5.5 still writes the `## Review Verdict` section, verdict `missing`
+(review not attempted) — the section is never omitted from a BUILD_REPORT.
+
+### `--tdd` mode (opt-in flag on /build)
+
+When invoked with `--tdd`, each code-bearing task follows RED-GREEN before
+the standard per-file verification: write the failing test → run it and
+observe the expected failure → write minimal code → run to green. Capture
+the observed RED excerpt and the GREEN run summary per task in the
+BUILD_REPORT `## TDD Evidence` section. Non-code tasks (markdown, YAML, templates) record `n/a (non-code
+artifact)`. Without the flag, task execution is unchanged. The report Metadata
+records the mode either way — `TDD Mode: opt-in` with the flag, `TDD Mode: off`
+without it — and the contract gate (Step 6.5) requires the evidence section
+whenever the mode is not `off`.
+
 ### Step 6: Generate the Build Report
 
 Write `.claude/sdd/reports/BUILD_REPORT_{FEATURE}.md`. See Output Obligations.
+
+Contract metadata rows (schema v2 — `build.report_contract`): every new report
+records `Schema Version: 2` and `TDD Mode` in its Metadata table (`opt-in` when
+the build ran with `--tdd`, `off` otherwise; `required` is reserved for
+risk-driven TDD policy). A report without the Schema Version row is treated as
+legacy by the contract gate below.
+
+### Step 6.5: Contract Gate (mandatory)
+
+Validate the report just written against the Build phase contract — artifact
+`BUILD_REPORT_{FEATURE}.md`, phase `build`:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/spec-lint .claude/sdd/reports/BUILD_REPORT_{FEATURE}.md --phase build \
+  --contracts-file ${CLAUDE_PLUGIN_ROOT}/sdd/architecture/WORKFLOW_CONTRACTS.yaml
+```
+
+Run it as `${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/USAGE.md` documents, and act on the exit code
+exactly as defined there:
+
+| Exit | Action |
+|------|--------|
+| 0 | Proceed to Step 7. A WARN (e.g. a legacy report) is recorded VISIBLY in the report before proceeding |
+| 1 | The build does NOT declare completion: fix the report — or the state it misreports — and re-lint once; still FAIL → Final Status `❌ BLOCKED`, open findings recorded as Blockers |
+| >= 2 | Record a VISIBLE SKIP in the report and proceed — never assume PASS |
+
+The exit-code contract and verdict semantics are owned by
+`${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/USAGE.md` and the `contract_enforcement` block of
+`${CLAUDE_PLUGIN_ROOT}/sdd/architecture/WORKFLOW_CONTRACTS.yaml`, which also declares this
+phase's binding (`build.required_sections` + `build.report_contract` semantic
+rules — verdict value, open blocking findings, fix-round budget, TDD evidence,
+task completeness, legacy detection). Manual runs use the default
+`--legacy-mode warn`; only Autopilot invokes `--legacy-mode fail` (Gate L
+policy, sdd-autopilot). Ship re-runs this same validation before archiving.
 
 ### Step 7: Update Statuses and Hand Off
 
@@ -341,6 +427,9 @@ PRE-FLIGHT CHECK
 ├─ [ ] All files from manifest created
 ├─ [ ] Each file verified (lint, types, tests)
 ├─ [ ] Full validation passes (lint, types, test suite)
+├─ [ ] Whole-branch review dispatched; Review Verdict recorded (clean or clean-with-minors)
+├─ [ ] Contract gate (Step 6.5): spec-lint --phase build exits 0, or a VISIBLE SKIP is recorded
+├─ [ ] --tdd runs: TDD Evidence table filled for every code-bearing task
 ├─ [ ] No TODO comments left in code
 ├─ [ ] No hardcoded secrets or credentials
 ├─ [ ] Error cases handled

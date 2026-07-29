@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.6.0
-# Date: 2026-07-27
+# Version: 3.8.0
+# Date: 2026-07-29
 
-version: "3.6.0"
+version: "3.8.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -173,13 +173,17 @@ contract_enforcement:
       the single source for which phase binds on what. The procedure that runs
       the binding lives in that phase's skill (sdd-define, sdd-design,
       sdd-iterate), per the component model: agents execute, skills teach how.
-      Currently wired: the Define and Design phases run a pre-handoff validation
-      of the produced phase document against its phase contract
-      (required_sections) via the spec-lint wrapper, branching on the exit code
-      (0 proceed, 1 block, 2 record a VISIBLE skip and proceed — never assume
-      PASS on exit 2). Phases without required_sections (Brainstorm, Build, Ship)
-      have no phase contract yet, so the document-level check is N/A for them
-      today. Specified TARGET: a two-pass
+      Currently wired: the Define, Design, and Build phases run a pre-handoff
+      validation of the produced phase document against its phase contract via
+      the spec-lint wrapper, branching on the exit code (0 proceed, 1 block,
+      2 record a VISIBLE skip and proceed — never assume PASS on exit 2).
+      Define and Design bind on required_sections; Build binds on
+      required_sections PLUS the BR.* semantic rules of BuildReportContract
+      (verdict value, open blocking findings, fix-round budget, TDD evidence,
+      task completeness, legacy detection), parameterized from
+      build.execution.final_review and build.report_contract. Phases without
+      required_sections (Brainstorm, Ship) have no phase contract yet, so the
+      document-level check is N/A for them today. Specified TARGET: a two-pass
       spec -> validate -> document -> validate binding (the Gate A
       pattern) activates when upstream phase-spec schemas land.
     bindings:
@@ -198,9 +202,9 @@ contract_enforcement:
       - phase: "Build"
         artifact: "BUILD_REPORT_{FEATURE}.md"
         contract_source: "loaded_as_data"
-        binds_on: "required_sections"
+        binds_on: "required_sections + report_contract (BR.* semantic rules)"
         pattern: "post_generation_conformance"
-        status: "specified target"
+        status: "wired (document-level); two-pass is the target"
       - phase: "Brainstorm"
         artifact: "BRAINSTORM_{FEATURE}.md"
         contract_source: "loaded_as_data"
@@ -494,6 +498,40 @@ build:
     order: "by dependencies"
     verification: "after each file"
     retry_limit: 3
+    final_review:
+      reviewer: "code-reviewer"
+      scope: "merge-base(default-branch, HEAD)..HEAD diff"
+      lens: "DEFINE acceptance tests + severity taxonomy"
+      severities: [critical, important, minor]
+      verdicts: [clean, clean-with-minors, dirty, missing]
+      blocking: "critical|important unresolved -> dirty"
+      missing_verdict: "reviewer dispatch failed after retry -> missing; blocks ship (fails closed)"
+      fix_loop_budget: 2
+      tdd_flag: "--tdd — opt-in RED-GREEN per code task, evidence in BUILD_REPORT"
+
+  # Document-level phase contract for BUILD_REPORT_{FEATURE}.md — consumed by
+  # spec-lint --phase build (BuildReportContract: section presence + BR.* semantic
+  # rules parameterized from execution.final_review and report_contract below).
+  required_sections:
+    - metadata
+    - summary
+    - task_execution_with_agent_attribution
+    - files_created
+    - verification_results
+    - review_verdict
+    - acceptance_test_verification
+    - final_status
+
+  report_contract:
+    schema_version: 2
+    schema_marker: "'Schema Version' row in the report Metadata table; absence => legacy report"
+    tdd_mode_values: ["off", "opt-in", "required"]  # TDD Mode metadata row; != off => TDD Evidence section required
+    legacy:
+      # Both severities are contract-declared; the consumer names its context via
+      # spec-lint --legacy-mode {warn,fail} — it never reinterprets a verdict.
+      detection: "metadata row 'Schema Version' absent"
+      manual: WARN        # --legacy-mode warn (default): migrate guidance, proceed
+      autopilot: FAIL     # --legacy-mode fail: fails closed under /auto
 
 
 # =============================================================================
@@ -540,6 +578,8 @@ ship:
     - all_tests_passing
     - no_blocking_issues
     - acceptance_tests_verified
+    - review_verdict_clean
+    - build_report_contract_gate_pass  # spec-lint --phase build re-validation (sdd-ship; --legacy-mode fail under /auto)
 
 # =============================================================================
 # CROSS-PHASE: ITERATE
@@ -828,6 +868,16 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.8.0"
+    date: "2026-07-29"
+    changes:
+      - "BUILD_REPORT_CONTRACT_ENFORCEMENT: build gains required_sections (8 sections) and report_contract (schema_version 2, TDD Mode values, contract-declared legacy severities manual=WARN/autopilot=FAIL). Build consumer binding flipped from 'specified target' to 'wired (document-level)': sdd-build Step 6.5 and sdd-ship re-validation run spec-lint --phase build (BuildReportContract — section presence + BR.* semantic rules: verdict value fail-closed on dirty/missing, unresolved Critical/Important findings in the Review Verdict table, fix-round budget, TDD evidence when TDD Mode != off, task completeness vs Final Status, schema-version match, legacy detection via --legacy-mode). ship.pre_ship_checklist gains build_report_contract_gate_pass (6th item, consumed by Gate S; --legacy-mode fail under /auto). BUILD_REPORT template gains Schema Version + TDD Mode metadata rows. Plugin parity proven post-package by tests/test_plugin_parity.py (pre-build test run excludes it to avoid the stale-plugin deadlock)."
+
+  - version: "3.7.0"
+    date: "2026-07-29"
+    changes:
+      - "BUILD_QUALITY_GATES: build.execution gains final_review — mandatory whole-branch adversarial review (code-reviewer, merge-base..HEAD, DEFINE acceptance lens) as sdd-build Step 5.5, verdict taxonomy clean/clean-with-minors/dirty/missing, fix-loop budget 2. ship.pre_ship_checklist gains review_verdict_clean (5th item). Autopilot gains Gate R consuming the verdict. Opt-in --tdd flag on /build (RED-GREEN per code task, evidence in BUILD_REPORT). Evidence base: 2026-07-28 Superpowers benchmark (undetected UTC date bug with a green suite)."
+
   - version: "3.6.0"
     date: "2026-07-27"
     changes:

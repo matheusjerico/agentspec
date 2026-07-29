@@ -12,6 +12,8 @@
 | **DEFINE** | [DEFINE_{FEATURE}.md](../features/DEFINE_{FEATURE}.md) |
 | **DESIGN** | [DESIGN_{FEATURE}.md](../features/DESIGN_{FEATURE}.md) |
 | **Status** | In Progress / Complete / Blocked |
+| **Schema Version** | 2 |
+| **TDD Mode** | {off / opt-in / required} |
 
 ---
 
@@ -96,6 +98,38 @@
 | `test_integration` | ✅ Pass |
 
 **Status:** ✅ {X}/{Y} Pass | ❌ {N} Fail
+
+---
+
+## Review Verdict
+
+> Whole-branch adversarial review — mandatory final step of the build
+> (`WORKFLOW_CONTRACTS.yaml` → `build.execution.final_review`). Ship refuses
+> `dirty` and `missing` verdicts.
+
+| Attribute | Value |
+|-----------|-------|
+| **Verdict** | {clean / clean-with-minors / dirty / missing} |
+| **Reviewer** | @code-reviewer |
+| **Diff scope** | {merge-base sha}..{HEAD sha} |
+| **Fix rounds used** | {0-2}/2 |
+
+| # | Severity | Finding | Location | Resolution |
+|---|----------|---------|----------|------------|
+| 1 | {Critical / Important / Minor} | {finding} | {file:line} | {fixed in {sha} / recorded (minor) / OPEN} |
+
+---
+
+## TDD Evidence (--tdd runs only)
+
+> One row per code-bearing manifest task. Non-code tasks record `n/a`.
+> Required whenever the Metadata `TDD Mode` is `opt-in` or `required` — the
+> contract gate (`spec-lint --phase build`, sdd-build Step 6.5) enforces it.
+> Omit this section only when `TDD Mode` is `off`.
+
+| Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |
+|------|-----------|-------------------------------|-----------|--------|
+| {task} | {tests/...} | {expected failure line} | {X passed} | {sha} |
 
 ---
 
@@ -209,6 +243,8 @@ ambiguity (DESIGN fully pre-decided everything).
 - [ ] All verification checks pass
 - [ ] All tests pass
 - [ ] No blocking issues
+- [ ] Review Verdict is clean or clean-with-minors
+- [ ] Contract gate passed: `spec-lint --phase build` exit 0 (sdd-build Step 6.5)
 - [ ] Acceptance tests verified
 - [ ] Ready for /ship
 

@@ -12,6 +12,8 @@
 | **DEFINE** | [DEFINE_{FEATURE}.md](../features/DEFINE_{FEATURE}.md) |
 | **DESIGN** | [DESIGN_{FEATURE}.md](../features/DESIGN_{FEATURE}.md) |
 | **Status** | In Progress / Complete / Blocked |
+| **Schema Version** | 2 |
+| **TDD Mode** | {off / opt-in / required} |
 
 ---
 
@@ -121,7 +123,9 @@
 ## TDD Evidence (--tdd runs only)
 
 > One row per code-bearing manifest task. Non-code tasks record `n/a`.
-> Omit this section entirely when the build ran without `--tdd`.
+> Required whenever the Metadata `TDD Mode` is `opt-in` or `required` — the
+> contract gate (`spec-lint --phase build`, sdd-build Step 6.5) enforces it.
+> Omit this section only when `TDD Mode` is `off`.
 
 | Task | Test file | RED observed (failure excerpt) | GREEN run | Commit |
 |------|-----------|-------------------------------|-----------|--------|
@@ -240,6 +244,7 @@ ambiguity (DESIGN fully pre-decided everything).
 - [ ] All tests pass
 - [ ] No blocking issues
 - [ ] Review Verdict is clean or clean-with-minors
+- [ ] Contract gate passed: `spec-lint --phase build` exit 0 (sdd-build Step 6.5)
 - [ ] Acceptance tests verified
 - [ ] Ready for /ship
 

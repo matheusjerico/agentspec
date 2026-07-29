@@ -73,6 +73,7 @@ passing. When the environment is healthy it forwards all arguments to the CLI.
 ```bash
 ./spec-lint <path>                    # lint a spec file or directory
 ./spec-lint <doc.md> --phase design   # lint a Markdown phase document
+./spec-lint <report.md> --phase build [--legacy-mode warn|fail]   # lint a BUILD_REPORT (semantic rules)
 ./spec-lint --emit-schema OUT.json    # write the spec JSON Schema
 ```
 
@@ -103,6 +104,21 @@ verdict output goes to stdout.
   `.claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml`; override it with
   `--contracts-file PATH`. Each required section must appear as a Markdown
   heading (matched case/punctuation-insensitively); a missing one is a FAIL.
+- **Build-report linting** (`--phase build`): the build phase routes to a
+  `BuildReportContract` instead of the generic section check — section presence
+  PLUS the `BR.*` semantic rules: review verdict present with an allowed value,
+  `dirty`/`missing` verdicts fail closed, no open Critical/Important finding,
+  `Fix rounds used` consistent with the declared budget, TDD Evidence present
+  whenever the report's `TDD Mode` metadata row is not `off`, and task
+  completeness consistent with a `COMPLETE` Final Status. Rule parameters are
+  read from the same contracts YAML (`build.execution.final_review`,
+  `build.report_contract`) — never hardcoded. A report without the
+  `Schema Version` metadata row is a *legacy* (pre-contract) report: it yields
+  a single `BR.legacy_report` finding whose severity is contract-declared in
+  `build.report_contract.legacy` — `--legacy-mode warn` (the default; manual
+  runs) maps it to WARN with migration guidance, `--legacy-mode fail`
+  (Autopilot's invocation) maps it to FAIL. A parseable `dirty`/`missing`
+  verdict on a legacy report still FAILs in both modes (fail-closed).
 - **Schema emission** (`--emit-schema OUT.json`): writes the reference
   contract's JSON Schema to `OUT.json`, creating parent directories as needed
   (combine with a path to also lint; alone it just writes and exits 0).
