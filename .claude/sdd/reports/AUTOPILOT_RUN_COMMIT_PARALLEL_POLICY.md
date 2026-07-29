@@ -24,6 +24,9 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-29T19:40Z | - | - |
+| L | design | 1 | spec-lint exit 0 with WARN TX.orphan_reference — REAL matrix gap (REQ-007 missing); fixed, re-lint | REFINE (budget 1/1) | 2026-07-29T19:46Z | - | - |
+| L | design | 2 | spec-lint --phase design exit 0, zero findings | PASS | 2026-07-29T19:47Z | - | - |
+| J | design | 1 | spec-judge exit 3 (daily budget) | SKIP:exit3 | 2026-07-29T19:47Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +38,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_COMMIT_PARALLEL_POLICY.md | pending | I: re-score 15/15 |
-| Design | pending | - | - |
+| Ignition | .claude/sdd/features/DEFINE_COMMIT_PARALLEL_POLICY.md | 36c3016 — ignition | I: re-score 15/15 |
+| Design | .claude/sdd/features/DESIGN_COMMIT_PARALLEL_POLICY.md | pending | L: REFINE→PASS (live TX catch!) · J: SKIP:exit3 · D: 0 pauses |
 | Build | pending | - | - |
 | Ship | pending | - | - |
 | PR | pending | - | - |
