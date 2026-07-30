@@ -1515,7 +1515,6 @@ def test_within_budget_stays_clean_under_the_override_contract() -> None:
 
 
 # --- PR B: the five residuals PR A deferred, each named ------------------------
-# Repros verbatim from docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md.
 # Each produced a full PASS on an unresolved Critical before the structural parser.
 
 def _real_contract():
