@@ -45,6 +45,7 @@ from dataclasses import dataclass
 
 import yaml
 
+from ..markdown import TableError, parse_tables
 from ..verdict import Finding, Level
 
 # Two deliberately different heading vocabularies:
@@ -61,7 +62,6 @@ _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 # (#, REQ, Priority, Tasks, Tests, Verification Type) — the same
 # numbered-row grammar `BuildReportContract` uses for its task/review
 # tables, reused here verbatim.
-_NUMBERED_ROW = re.compile(r"^\|\s*\d+\s*\|.*$", re.MULTILINE)
 # A manifest task's `requirements` entry is orphan-checked against the
 # matrix only when it is a REQ-ID — legacy MUST-n/SC-n refs are tolerated
 # (never orphan-flagged), per DEFINE A-002's pre-REQ-ID adoption path.
@@ -100,32 +100,6 @@ def _section_exact(artifact: str, slug: str) -> str | None:
             end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
             return artifact[start:end]
     return None
-
-
-def _parse_matrix_rows(section: str) -> tuple[list[_MatrixRow], list[str]]:
-    """Numbered rows of a `## Traceability Matrix` section — design-side
-    shape: `| # | REQ | Priority | Tasks | Tests | Verification Type |`.
-    Rows with fewer than 6 cells, or an unfilled template placeholder
-    (`{` in the REQ or Priority cell), are returned in the second list and
-    become `TX.matrix_row_malformed` FAIL findings — fail-closed: a
-    truncated MUST row must never vanish from the coverage rules."""
-    rows: list[_MatrixRow] = []
-    malformed: list[str] = []
-    for m in _NUMBERED_ROW.finditer(section):
-        raw = m.group(0).strip()
-        cells = [c.strip() for c in raw.strip("|").split("|")]
-        if len(cells) < 6 or "{" in cells[1] or "{" in cells[2]:
-            malformed.append(raw)
-            continue
-        rows.append(
-            _MatrixRow(
-                req=cells[1],
-                priority=cells[2].lower(),
-                tasks=cells[3],
-                verification_type=cells[5],
-            )
-        )
-    return rows, malformed
 
 
 def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
@@ -175,7 +149,7 @@ class _ParsedDesignPhase:
     manifest: dict | None
     manifest_broken: bool
     matrix_rows: list[_MatrixRow]
-    matrix_rows_malformed: list[str]
+    matrix_errors: list[TableError]
     matrix_present: bool
 
 
@@ -209,15 +183,44 @@ class DesignPhaseContract:
         manifest, broken = _parse_manifest(artifact)
         matrix_section = _section_exact(artifact, "traceability_matrix")
         matrix_present = matrix_section is not None
-        matrix_rows, matrix_rows_malformed = (
-            _parse_matrix_rows(matrix_section) if matrix_section is not None else ([], [])
-        )
+        matrix_rows: list[_MatrixRow] = []
+        matrix_errors: list[TableError] = []
+        if matrix_section is not None:
+            # The SHARED parser (§7.9): design and build read rows the same way,
+            # so the two sides can no longer drift — and a malformed row is
+            # reported here instead of vanishing.
+            for table in parse_tables(
+                "Traceability Matrix", matrix_section, required_columns={"req", "priority"}
+            ):
+                matrix_errors.extend(table.errors)
+                index = {
+                    name: table.header_index(name)
+                    for name in ("REQ", "Priority", "Tasks", "Verification Type")
+                }
+                for row in table.rows:
+                    req = row.cell(index["REQ"] if index["REQ"] is not None else 1)
+                    if "{" in req:
+                        continue  # reported by the parser as a placeholder
+                    matrix_rows.append(
+                        _MatrixRow(
+                            req=req,
+                            priority=row.cell(
+                                index["Priority"] if index["Priority"] is not None else 2
+                            ).lower(),
+                            tasks=row.cell(index["Tasks"] if index["Tasks"] is not None else 3),
+                            verification_type=row.cell(
+                                index["Verification Type"]
+                                if index["Verification Type"] is not None
+                                else 5
+                            ),
+                        )
+                    )
         return _ParsedDesignPhase(
             headings=headings,
             manifest=manifest,
             manifest_broken=broken,
             matrix_rows=matrix_rows,
-            matrix_rows_malformed=matrix_rows_malformed,
+            matrix_errors=matrix_errors,
             matrix_present=matrix_present,
         )
 
@@ -283,15 +286,15 @@ class DesignPhaseContract:
                 level=Level.FAIL,
                 rule="TX.matrix_row_malformed",
                 field="Traceability Matrix",
-                message=(
-                    "numbered row is truncated (<6 cells) or carries an unfilled "
-                    "placeholder in REQ/Priority — a malformed row is a FAIL, "
-                    "never a silent drop that hides a MUST from coverage"
+                message=error.render(),
+                expected=(
+                    f"{error.expected_cells} cells"
+                    if error.expected_cells is not None
+                    else "a well-formed table row"
                 ),
-                expected="| # | REQ | Priority | Tasks | Tests | Verification Type |",
-                found=raw,
+                found=error.raw.strip(),
             )
-            for raw in parsed.matrix_rows_malformed
+            for error in parsed.matrix_errors
         ]
         findings.extend(self._check_matrix_must_without_task(parsed.matrix_rows))
         findings.extend(self._check_matrix_unknown_type(parsed.matrix_rows))

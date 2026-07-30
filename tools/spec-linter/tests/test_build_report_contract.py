@@ -890,7 +890,7 @@ def test_decoy_matrix_heading_does_not_mask_missing_matrix() -> None:
     assert "BR.matrix_missing" in [f.rule for f in verdict.findings]
 
 
-# --- BR.matrix_row_malformed / BR.task_review_row_malformed (fail-closed) ----
+# --- MD.table_malformed / MD.table_malformed (fail-closed) ----
 # Codex review findings 2–3: truncated or placeholder-bearing rows were
 # silently dropped, letting a MUST row or a dirty verdict hide by truncation.
 
@@ -909,7 +909,7 @@ def test_truncated_must_matrix_row_fails_malformed() -> None:
     report = VALID_REPORT + _raw_matrix_section(["| 1 | REQ-1 | MUST | TASK-A |"])
     verdict = _lint_with_matrix(report)
     assert verdict.level == Level.FAIL
-    assert "BR.matrix_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
 
 
 @pytest.mark.parametrize("cells", list(range(2, 8)))
@@ -917,7 +917,7 @@ def test_matrix_row_every_short_cardinality_fails(cells: int) -> None:
     row = "| 1 | " + " | ".join(["x"] * (cells - 1)) + " |"
     report = VALID_REPORT + _raw_matrix_section([row])
     verdict = _lint_with_matrix(report)
-    assert "BR.matrix_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
     assert verdict.level == Level.FAIL
 
 
@@ -926,7 +926,7 @@ def test_placeholder_req_matrix_row_fails_malformed() -> None:
         [("{REQ id}", "MUST", "tests/test_x.py", "Pass")]
     )
     verdict = _lint_with_matrix(report)
-    assert "BR.matrix_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
 
 
 def test_placeholder_priority_matrix_row_fails_malformed() -> None:
@@ -934,27 +934,30 @@ def test_placeholder_priority_matrix_row_fails_malformed() -> None:
         [("REQ-1", "{MUST/SHOULD}", "tests/test_x.py", "Pass")]
     )
     verdict = _lint_with_matrix(report)
-    assert "BR.matrix_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
 
 
-def test_malformed_row_leaves_intact_rows_untouched() -> None:
+def test_malformed_row_is_reported_AND_still_seen_by_coverage() -> None:
+    """PR B's invariant in action: the truncated MUST row is no longer dropped,
+    so it is reported as malformed AND counted as uncovered. Under PR A it
+    vanished from coverage entirely — reporting both is strictly more
+    informative and strictly more fail-closed."""
     report = VALID_REPORT + _raw_matrix_section(
         [
             "| 1 | REQ-1 | MUST | TASK-A | tests/test_x.py | unit | Pass | clean |",
             "| 2 | REQ-2 | MUST | TASK-B |",
         ]
     )
-    verdict = _lint_with_matrix(report)
-    rules = _rules(verdict)
-    assert rules.count("BR.matrix_row_malformed") == 1
-    assert "BR.must_uncovered" not in rules  # the intact MUST row is covered
+    rules = _rules(_lint_with_matrix(report))
+    assert rules.count("MD.table_malformed") == 1
+    assert "BR.must_uncovered" in rules
 
 
 def test_intact_matrix_rows_produce_no_malformed_finding() -> None:
     report = VALID_REPORT + _filled_matrix_section(
         [("REQ-1", "MUST", "tests/test_x.py", "Pass")]
     )
-    assert "BR.matrix_row_malformed" not in _rules(_lint_with_matrix(report))
+    assert "MD.table_malformed" not in _rules(_lint_with_matrix(report))
 
 
 def test_short_review_row_hiding_dirty_fails_malformed_at_low_risk() -> None:
@@ -971,7 +974,7 @@ def test_short_review_row_hiding_dirty_fails_malformed_at_low_risk() -> None:
     )
     verdict = _lint_with_task_review(report)
     assert verdict.level == Level.FAIL
-    assert "BR.task_review_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
 
 
 def test_placeholder_verdict_review_row_fails_malformed() -> None:
@@ -980,14 +983,14 @@ def test_placeholder_verdict_review_row_fails_malformed() -> None:
     )
     report += _task_reviews_section([("TASK-1", "{verdict}")])
     verdict = _lint_with_task_review(report)
-    assert "BR.task_review_row_malformed" in _rules(verdict)
+    assert "MD.table_malformed" in _rules(verdict)
     assert verdict.level == Level.FAIL
 
 
 def test_intact_review_rows_produce_no_malformed_finding() -> None:
     report = _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2")
     report += _task_reviews_section([("TASK-1", "clean"), ("TASK-2", "clean")])
-    assert "BR.task_review_row_malformed" not in _rules(_lint_with_task_review(report))
+    assert "MD.table_malformed" not in _rules(_lint_with_task_review(report))
 
 
 # --- exact section addressing + MD.duplicate_contract_section -----------------
@@ -1509,3 +1512,189 @@ def test_override_does_not_excuse_a_diverging_budget() -> None:
 def test_within_budget_stays_clean_under_the_override_contract() -> None:
     verdict = lint(VALID_REPORT, _contract_with_override())
     assert verdict.level == Level.PASS
+
+
+# --- PR B: the five residuals PR A deferred, each named ------------------------
+# Repros verbatim from docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md.
+# Each produced a full PASS on an unresolved Critical before the structural parser.
+
+def _real_contract():
+    from pathlib import Path as _P
+
+    from spec_linter import cli
+
+    cf = _P(__file__).resolve().parents[3] / ".claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml"
+    return cli._build_report_contract(cli._load_contracts_data(cf), cf, "warn")
+
+
+_RESOLVED_ROW = "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+_SEVER = "\n\n## Files Created\n\n- src/x.py\n\n"
+
+
+def _sever(block: str, *, moved: bool = False) -> str:
+    report = mutate(VALID_REPORT, _RESOLVED_ROW, _RESOLVED_ROW + block)
+    if moved:
+        report = mutate(
+            report,
+            "## Files Created\n\n- `src/sample/parser.py`\n- `tests/test_parser.py`\n\n",
+            "",
+        )
+    return report
+
+
+@pytest.mark.parametrize("moved", [False, True], ids=["duplicated", "moved"])
+def test_R1_renamed_resolution_column_no_longer_hides_a_critical(moved: bool) -> None:
+    block = _SEVER + (
+        "| # | Severity | Description | Location | Status |\n"
+        "|---|----------|-------------|----------|--------|\n"
+        "| 1 | Critical | SQL injection | db.py |  |\n"
+    )
+    assert lint(_sever(block, moved=moved), _real_contract()).level == Level.FAIL
+
+
+def test_R2_row_without_a_leading_number_no_longer_hides_a_critical() -> None:
+    block = "\n| Critical | SQL injection | db.py:42 |  |"
+    assert lint(_sever(block), _real_contract()).level == Level.FAIL
+
+
+def test_R3_raw_html_table_is_forbidden() -> None:
+    block = "\n\n<table><tr><td>Critical</td><td>SQL injection</td></tr></table>"
+    verdict = lint(_sever(block), _real_contract())
+    assert verdict.level == Level.FAIL
+    assert "MD.html_table_forbidden" in _rules(verdict)
+
+
+def test_R4_unrecognised_severity_word_blocks() -> None:
+    block = "\n| 2 | Blocker | SQL injection | db.py | OPEN |"
+    verdict = lint(_sever(block), _real_contract())
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        "| 2 | Critical | SQL injection | db.py |  | padding |",  # wider
+        "| 2 | Critical | SQL injection |",  # narrower
+    ],
+    ids=["padded", "narrow"],
+)
+def test_R5_severed_row_of_any_width_no_longer_hides_a_critical(row: str) -> None:
+    assert lint(_sever(_SEVER + row, moved=True), _real_contract()).level == Level.FAIL
+
+
+def test_the_clean_fixture_still_passes_under_the_real_contract() -> None:
+    # The cry-wolf guard: none of the above may cost a false positive.
+    verdict = lint(VALID_REPORT, _real_contract())
+    assert "MD.table_malformed" not in _rules(verdict)
+    assert "BR.open_blocking_finding" not in _rules(verdict)
+
+
+# --- §7.6 within-artifact matrix rules ----------------------------------------
+
+
+def test_duplicate_req_id_is_reported() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "MUST", "t.py", "Pass"), ("REQ-1", "MUST", "t.py", "Pass")]
+    )
+    assert "MD.duplicate_identifier" in _rules(_lint_with_matrix(report))
+
+
+def test_matrix_present_but_empty_is_reported() -> None:
+    report = VALID_REPORT + (
+        "\n## Traceability Matrix\n\n"
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |\n"
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|\n"
+    )
+    assert "MD.matrix_empty" in _rules(_lint_with_matrix(report))
+
+
+# --- §7.9: the parser is shared -----------------------------------------------
+
+
+def test_no_hand_rolled_row_parsing_remains_in_the_contracts() -> None:
+    """§7.9's last acceptance bullet. Both phase contracts must go through the
+    shared parser — a second row grammar is how the two sides drifted before."""
+    from pathlib import Path as _P
+
+    root = _P(__file__).resolve().parents[1] / "spec_linter" / "contracts"
+    for name in ("build_report.py", "design_phase.py"):
+        source = (root / name).read_text()
+        assert 'strip("|").split("|")' not in source, f"{name} still splits cells by hand"
+        assert "_NUMBERED_ROW" not in source, f"{name} still has its own row regex"
+
+
+# --- round-1 review fixes (PR B) ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "| # | Level | Description | Location | State |",
+        "| # | Impact | Description | Location | Resolution |",
+        "| # | Criticality | Description | Location | Outcome |",
+    ],
+)
+def test_synonym_column_names_still_identify_a_findings_table(header: str) -> None:
+    """Review finding 1 (Critical): a findings table whose columns use a
+    sanctioned synonym must still be recognised — recognition is by the closed
+    COLUMN vocabulary, which is contract data and extensible by one line."""
+    block = _SEVER + f"{header}\n|---|---|---|---|---|\n| 1 | Critical | SQLi | db.py | OPEN |\n"
+    assert lint(_sever(block, moved=True), _real_contract()).level == Level.FAIL
+
+
+def test_prose_fragment_mentioning_critical_is_not_a_finding() -> None:
+    """Review finding 2: inheritance is POSITIONAL. A stray one-cell line that
+    merely contains the word is prose, not a severed findings row."""
+    report = _sever("\n\n| this dependency is critical for phase 2, tracked separately |")
+    assert "BR.open_blocking_finding" not in _rules(lint(report, _real_contract()))
+
+
+def test_decision_table_saying_important_is_not_a_finding() -> None:
+    """The cry-wolf guard that killed the content-based recognition attempt:
+    a legitimate table may simply CONTAIN a severity word."""
+    report = VALID_REPORT + (
+        "\n## Autonomous Decisions\n\n"
+        "| # | Decision Point | Options Considered | Chose | Rationale |\n"
+        "|---|----------------|--------------------|-------|-----------|\n"
+        "| 1 | Important | A vs B | A | deferred to a follow-up |\n"
+    )
+    assert "BR.open_blocking_finding" not in _rules(_lint(report))
+
+
+def test_a_dash_row_cannot_turn_a_finding_into_a_header() -> None:
+    """Review finding 5, end to end: the simplest bypass found in this PR —
+    a blank line plus a dash row, no boundary trick required."""
+    report = _sever("\n\n| 2 | Critical | SQL injection | db.py:42 |  |\n| - | - | - | - | - |")
+    verdict = lint(report, _real_contract())
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+# --- review finding 7: the ambiguity is closed at EVERY surface ---------------
+
+
+def test_dash_row_cannot_hide_an_uncovered_must_in_the_matrix() -> None:
+    report = VALID_REPORT + (
+        "\n## Traceability Matrix\n\n"
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |\n"
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|\n"
+        "| 1 | REQ-1 | MUST | TASK-A | tests/a.py | unit | Pass | clean |\n\n"
+        "| 2 | REQ-2 | MUST | TASK-B |  |  |  |  |\n"
+        "| - | - | - | - | - | - | - | - |\n"
+    )
+    rules = _rules(_lint_with_matrix(report))
+    assert "BR.must_uncovered" in rules
+    assert "MD.table_malformed" in rules
+
+
+def test_dash_row_cannot_hide_a_dirty_task_review() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2") + (
+        "\n## Task Reviews\n\n"
+        "| # | Task ID | Risk | Reviewer | Verdict |\n"
+        "|---|---------|------|----------|---------|\n"
+        "| 1 | TASK-1 | low | @r | clean |\n\n"
+        "| 2 | TASK-2 | low | @r | dirty |\n"
+        "| - | - | - | - | - |\n"
+    )
+    assert "BR.task_review_dirty" in _rules(_lint_with_task_review(report))

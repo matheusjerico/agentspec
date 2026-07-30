@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.19.0
+# Version: 3.20.0
 # Date: 2026-07-29
 
-version: "3.19.0"
+version: "3.20.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -628,6 +628,35 @@ workflow_metrics:
     ship: "summarizes the block into SHIPPED (metrics table + lessons); metrics NEVER auto-change policies — risk recalibration requires multiple comparable runs AND human review"
 
 
+# Table grammar (Remediation §7, PR B) — the closed vocabularies the structural
+# table parser's consumers bind on. Opt-in like every prior block: absent here
+# leaves the MD.* table rules dormant and the contracts on their prior path.
+#
+# Severity is a CLOSED vocabulary on purpose: an unrecognised word (Blocker,
+# Sev-1, a typo, a Cyrillic homoglyph) is invalid_identifier -> FAIL, never a
+# silent non-match. Decoration around a recognised word never hides it
+# (`Critical (F1)`, `**Critical**`, `🔴 Critical`), and cells are NFKC-normalised
+# before matching.
+table_contract:
+  severity_vocabulary:
+    blocking: [critical, important]
+    non_blocking: [minor, info, informational, nit, trivial]
+  # Column names that carry a finding's resolution. A findings table is
+  # identified by having BOTH a severity column and one of these — renaming the
+  # column (R-1) no longer makes the table unrecognisable.
+  resolution_columns: [resolution, status, outcome, fix, disposition, state, result]
+  severity_columns: [severity, sev, level, impact, criticality]
+  # Columns whose cells may not be empty, per surface.
+  required_cells:
+    review_findings: [severity]
+    traceability_matrix: [req, priority]
+    task_reviews: [task id, verdict]
+  # Raw HTML tables are rejected outright rather than parsed: a second grammar
+  # would mean a second set of shape assumptions, which is the debt §7 exists
+  # to pay off (§4.1 fail-closed).
+  html_tables: forbidden
+
+
 # =============================================================================
 # PHASE 2: DESIGN
 # =============================================================================
@@ -1087,6 +1116,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.20.0"
+    date: "2026-07-30"
+    changes:
+      - "FAIL_CLOSED_TABLES (remediation spec §7, PR B): new top-level table_contract block — closed severity vocabulary (blocking/non-blocking, NFKC-normalised, unrecognised word is invalid_identifier), resolution and severity column-name vocabularies (a renamed Status column no longer hides a findings table), required cells per surface, and html_tables: forbidden. Backed by the new spec_linter/markdown package: ParsedTable/ParsedRow/TableError with the eight §7.4 error kinds, one escape-aware cell splitter, and the parse-never-filter invariant — every recognised table line becomes a row, an error, or both, so a malformed row can no longer be mistaken for an absent one. The parser is total (no input raises) and consumes sections.content_lines for opacity."
+
   - version: "3.19.0"
     date: "2026-07-30"
     changes:

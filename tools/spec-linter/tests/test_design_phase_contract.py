@@ -559,3 +559,16 @@ def test_intact_design_matrix_rows_no_malformed_finding() -> None:
     assert "TX.matrix_row_malformed" not in [
         f.rule for f in _lint_with_traceability(doc).findings
     ]
+
+
+def test_dash_row_cannot_hide_a_matrix_row_on_the_design_side() -> None:
+    """Review finding 7: the same ambiguity was live in design_phase, where it
+    produced a full PASS with zero findings."""
+    doc = (
+        VALID_DESIGN
+        + _matrix_section(VALID_MATRIX_ROWS)
+        + "\n| 9 | REQ-9 | MUST |  |  |  |\n| - | - | - | - | - | - |\n"
+    )
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.FAIL
+    assert "TX.matrix_row_malformed" in [f.rule for f in verdict.findings]

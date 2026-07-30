@@ -120,6 +120,22 @@ partida por linha em branco; tabela de exemplo dentro de fence) — e um gate qu
 grita em artefato válido é contornado, o que é falha de segurança própria. O §16
 sequencia A → B exatamente por isso.
 
+## Estado após o PR B (2026-07-30)
+
+R-1 a R-5 **fechados** e verificados nas duas variantes (duplicada e movida).
+Um residual novo, estreito e documentado, nasce da correção do R-1 e vai para
+o **PR F** (§11, consolidação de parser/modelos):
+
+**R-6 — tabela de findings com nomes de coluna totalmente fora do vocabulário.**
+O reconhecimento de tabela *com header* é por vocabulário fechado de colunas
+(`severity|sev|level|impact|criticality` × `resolution|status|outcome|fix|
+disposition|state|result`). Um header inteiramente estrangeiro não é
+reconhecido. Tentou-se reconhecimento por conteúdo e foi removido: por
+conteúdo, uma célula que *é* a palavra "Important" numa tabela de decisões é
+indistinguível de uma linha de finding — três construções legítimas do próprio
+template ficaram vermelhas. Remédio sancionado: estender o vocabulário (uma
+linha de dado de contrato). Valores desconhecidos seguem fail-closed.
+
 ## Lição transversal (vale para o PR B e para o resto do programa)
 
 Os quatro rounds convergiram num invariante único, que o revisor formulou melhor
