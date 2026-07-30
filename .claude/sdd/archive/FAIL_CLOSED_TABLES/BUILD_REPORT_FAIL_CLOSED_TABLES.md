@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_FAIL_CLOSED_TABLES.md](../features/DEFINE_FAIL_CLOSED_TABLES.md) |
 | **DESIGN** | [DESIGN_FAIL_CLOSED_TABLES.md](../features/DESIGN_FAIL_CLOSED_TABLES.md) |
-| **Status** | Complete |
+| **Status** | Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | required |
 | **Risk Level** | high (echo from DEFINE) |
@@ -153,9 +153,9 @@ regression matrix: 7 bypasses blocked, 4 legitimate constructs clean
 | 1 | Critical | A findings table with renamed columns was dropped with no diagnostic — DESIGN promised fail-closed on unknown column names, code delivered it only for unknown values | build_report.py | fixed in fix-round-1: recognition by the closed COLUMN vocabulary, extended with synonyms; a content-based attempt was tried and REMOVED after it reddened three legitimate template sections |
 | 2 | Important | An orphaned prose fragment containing "critical" was read as a finding | build_report.py | fixed in fix-round-1: inheritance is positional |
 | 3 | Important | An all-dash data row was silently swallowed | markdown/tables.py | fixed in fix-round-1: a separator is a delimiter only in the delimiter position |
-| 4 | Important | `\\|` merged two cells (a cell ending in a backslash swallowed the next column) | markdown/tables.py | fixed in fix-round-1: `\\` handled as a complete self-escape |
+| 4 | Important | A double-backslash before a pipe merged two cells, so a cell ending in a backslash swallowed the next column | markdown/tables.py | fixed in fix-round-1: a double backslash is handled as a complete self-escape |
 | 5 | Critical | A blank line plus a dash row turned an open finding into a "header" — the simplest bypass in this PR, no heading trick needed | markdown/tables.py | fixed in fix-round-2, then generalised in fix-round-3 |
-| 6 | Important | A reordered severed row names the wrong rule (still FAILs via MD.table_malformed) | build_report.py | recorded — fixing it reintroduces the prose false positive of finding 1; deferred to PR F with the reviewer's suggested formulation |
+| 6 | Minor | A reordered severed row names the wrong rule — the build still FAILs via MD.table_malformed, so no verdict flips (the reviewer classified it Warning/non-blocking and confirmed no verdict impact across two rounds) | build_report.py | recorded — fixing it reintroduces the prose false positive of finding 1; deferred to PR F with the reviewer's suggested formulation |
 | 7 | Critical | Finding 5's fix was wired into 1 of 6 `parse_tables` call sites, leaving the same bypass live in the matrix, Task Reviews, Task Execution, TDD Evidence and the design matrix | build_report.py, design_phase.py | fixed in fix-round-3: the tie-breaking VOCABULARY was removed entirely and the ambiguity now resolves structurally for every caller — one path instead of six, and the vocabulary's own substring false positive disappears with it |
 | 8 | Minor | R-6: a findings table whose column names fall entirely outside the vocabulary is unrecognised | build_report.py | recorded — remedy is one line of contract data; deferred to PR F |
 
@@ -271,7 +271,7 @@ workflow_metrics:
   tests_by_type: { unit: 58, contract: 1, documental: 0, integration: 0 }
   reopened_tasks: 3
   fix_rounds: { local: 0, final: 3 }
-  findings: { critical: 3, important: 4, minor: 1, by_stage: { task_review: 0, branch_review: 8 } }
+  findings: { critical: 3, important: 3, minor: 2, by_stage: { task_review: 0, branch_review: 8 } }
   requirements: { must_total: 7, must_verified: 7, excepted: 0 }
   operational_skips: []
   risk_overrides: 0

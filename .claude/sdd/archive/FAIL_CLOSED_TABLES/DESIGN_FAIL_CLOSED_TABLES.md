@@ -10,7 +10,7 @@
 | **Date** | 2026-07-30 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_FAIL_CLOSED_TABLES.md](DEFINE_FAIL_CLOSED_TABLES.md) |
-| **Status** | ✅ Complete (Built) |
+| **Status** | Shipped |
 | **Risk Level** | high (echo from DEFINE) |
 
 ---
