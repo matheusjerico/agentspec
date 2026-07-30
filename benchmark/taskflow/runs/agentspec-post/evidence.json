@@ -1,6 +1,6 @@
 {
   "framework": "agentspec",
-  "framework_source_commit": "a6082ebd47c7e6cf85d9b7e23cb6416be22d91db",
+  "framework_source_commit": "ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68",
   "versions": {
     "claude": "2.1.220",
     "framework": "3.20.0"

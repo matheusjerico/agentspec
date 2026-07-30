@@ -9,9 +9,9 @@ pr_ready:
   schema_version: 1
   feature: BUILD_REPRODUCIBILITY
   generated_at: "2026-07-30T19:05:11Z"
-  ship_head_sha: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+  ship_head_sha: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
   target_branch: main
-  target_tip_sha: 4ecf0976baa23d512a8d99e6813df2fd24630b2d
+  target_tip_sha: 73ff834b98666f2b5d555ded1182fe87359a2a48
   checks:
     working_tree_clean:
       result: pass

@@ -25,6 +25,12 @@ O run final usou Claude Code 2.1.220, Sonnet 5, esforço high, AgentSpec
 repositório isolado, corrigiu dois findings Important e um Minor na revisão,
 arquivou o fluxo completo e gerou PR_READY sem publicar PR remoto.
 
+Após o merge, a evidência foi vinculada novamente ao commit
+`ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68`, que corrige exclusivamente o
+validador de release, seus testes e documentação. O payload empacotado
+(`.claude/`, `plugin-extras/` e manifesto do plugin) permaneceu inalterado; as
+suítes e o build de release foram reexecutados antes desta vinculação.
+
 Verificação independente após o workflow:
 
 - backend: ruff e mypy limpos; 50 testes;
@@ -45,8 +51,8 @@ production_readiness:
   schema_version: 1
   decision: go
   generated_at: "2026-07-30T19:07:45Z"
-  release_source_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
-  target_tip: 4ecf0976baa23d512a8d99e6813df2fd24630b2d
+  release_source_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
+  target_tip: 73ff834b98666f2b5d555ded1182fe87359a2a48
   benchmark:
     report: benchmark/taskflow/runs/agentspec-post/evidence.json
     framework: agentspec
@@ -63,27 +69,27 @@ production_readiness:
     - feature: PR_READY_SCHEMA_CLOSURE
       bundle: .claude/sdd/archive/PR_READY_SCHEMA_CLOSURE
       pr_ready: .claude/sdd/reports/PR_READY_PR_READY_SCHEMA_CLOSURE.md
-      verification_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+      verification_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
       bundle_verdict: pass
     - feature: FEATURE_BUNDLE_HANDOFF
       bundle: .claude/sdd/archive/FEATURE_BUNDLE_HANDOFF
       pr_ready: .claude/sdd/reports/PR_READY_FEATURE_BUNDLE_HANDOFF.md
-      verification_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+      verification_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
       bundle_verdict: pass
     - feature: TARGET_TIP_FRESHNESS
       bundle: .claude/sdd/archive/TARGET_TIP_FRESHNESS
       pr_ready: .claude/sdd/reports/PR_READY_TARGET_TIP_FRESHNESS.md
-      verification_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+      verification_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
       bundle_verdict: pass
     - feature: BUILD_REPRODUCIBILITY
       bundle: .claude/sdd/archive/BUILD_REPRODUCIBILITY
       pr_ready: .claude/sdd/reports/PR_READY_BUILD_REPRODUCIBILITY.md
-      verification_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+      verification_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
       bundle_verdict: pass
     - feature: SEMANTIC_RELEASE_EVIDENCE_GATE
       bundle: .claude/sdd/archive/SEMANTIC_RELEASE_EVIDENCE_GATE
       pr_ready: .claude/sdd/reports/PR_READY_SEMANTIC_RELEASE_EVIDENCE_GATE.md
-      verification_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+      verification_commit: ac345dd4f8b56aaa89bb4a48647d4aa1cb27af68
       bundle_verdict: pass
 ```
 
