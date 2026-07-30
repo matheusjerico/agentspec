@@ -47,6 +47,30 @@ claude plugin update agentspec
 
 > **Override any agent locally** — drop a file in `.claude/agents/<category>/<agent-name>.md` and it takes precedence over the plugin version. See [Agent Overrides](docs/concepts/agent-overrides.md).
 
+### Use from Codex
+
+Open Codex from the repository root. Repo-local adapters under
+`.agents/skills/` expose every canonical AgentSpec skill and command without
+installing anything globally:
+
+```bash
+cd agentspec
+codex
+```
+
+Claude commands are exposed as Codex skills with an `agentspec-` prefix. Ask
+Codex to use `agentspec-brainstorm`, `agentspec-define`,
+`agentspec-design`, `agentspec-build`, or `agentspec-ship`. Canonical skills
+such as `sdd-design` keep their original names.
+
+The adapters are generated; never edit them directly. `.claude/` remains the
+only source of truth:
+
+```bash
+make generate  # regenerate after changing .claude/skills or .claude/commands
+make check     # fail if committed adapters have drifted
+```
+
 <details>
 <summary><b>Alternative install methods</b></summary>
 
@@ -217,6 +241,7 @@ agentspec/
 │   ├── skills/              # 22 source skills (SDD phases, GitHub workflow, authoring, KB, visuals…)
 │   ├── kb/                  # 24 knowledge base domains
 │   └── sdd/                 # Templates, contracts, features, archive
+├── .agents/skills/          # Generated repo-local Codex adapters
 │
 ├── plugin/                  # Distributable Claude Code plugin
 │   ├── .claude-plugin/      # Manifest + marketplace config

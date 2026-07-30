@@ -42,9 +42,11 @@ test: ## Run pytest suite
 check: ## Drift check — tests + generators in --check mode (fails on drift)
 	@python3 -m pytest tests/ -q
 	@python3 scripts/generate-agent-router.py --check
+	@python3 scripts/generate-codex-adapters.py --check
 
-generate: ## Regenerate agent-router artifacts (SKILL.md + routing.json)
+generate: ## Regenerate agent-router and repo-local Codex adapters
 	@python3 scripts/generate-agent-router.py
+	@python3 scripts/generate-codex-adapters.py
 
 plugin: build ## Alias for `make build`
 
