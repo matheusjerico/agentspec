@@ -165,6 +165,38 @@ def test_backup_captures_agents_and_rollback_restores_it(target: Path, home: Pat
     assert native.read_text(encoding="utf-8") == "codex-native"
 
 
+def test_non_directory_agents_round_trips_through_backup_and_rollback(
+    target: Path, home: Path
+):
+    # .agents is a plain file here, not a directory. Adapter generation can't
+    # run against it (write_adapters' mkdir fails), but backup_target already
+    # backs up .agents on `-e` (any type) before that runs, and rollback_target
+    # must restore it on the same test -- not silently skip it because it
+    # isn't a directory.
+    agents_file = target / ".agents"
+    agents_file.write_text("not a directory", encoding="utf-8")
+
+    applied = _run(target, "--apply", "--stamp", "filestamp", home=home)
+    assert applied.returncode == 1, applied.stdout + applied.stderr
+    assert "adapters: FAILED" in applied.stdout
+
+    backup = home / ".agentspec-rollout-backups" / "filestamp" / "target" / ".agents"
+    assert backup.is_file()
+    assert backup.read_text(encoding="utf-8") == "not a directory"
+    # write_adapters raises before mutating anything, so the target's own
+    # .agents survives the failed apply untouched.
+    assert agents_file.read_text(encoding="utf-8") == "not a directory"
+
+    agents_file.write_text("mutated after apply", encoding="utf-8")
+
+    restored = _run(target, "--rollback", "--stamp", "filestamp", home=home)
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert "restored:" in restored.stdout
+    assert ".agents" in restored.stdout
+    assert agents_file.is_file()
+    assert agents_file.read_text(encoding="utf-8") == "not a directory"
+
+
 def test_rollback_from_a_claude_only_stamp_succeeds(target: Path, home: Path):
     stamp_dir = home / ".agentspec-rollout-backups" / "legacy" / "target"
     (stamp_dir / ".claude" / "skills" / "restored").mkdir(parents=True)

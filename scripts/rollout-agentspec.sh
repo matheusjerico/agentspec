@@ -27,9 +27,10 @@
 #     .claude/ tree. Entries the generator does not produce (Codex-native
 #     skills) are preserved. A validation failure leaves .agents/ untouched,
 #     reports the offending source, and marks the run partial.
-#     Dry-run counts reflect the target's current tree; a validation error
-#     predicted there is authoritative, because payload components are
-#     validated by `make check`.
+#     Dry-run counts reflect the target's pre-sync tree; a predicted
+#     validation error naming an AgentSpec-owned path is typically resolved
+#     by the sync itself — re-check after --apply rather than fixing it by
+#     hand in the target.
 #
 #   MERGED:
 #     kb/_index.yaml — new payload index + the target's target-only domain
@@ -473,7 +474,7 @@ rollback_target() {
     restored=""
     local part
     for part in .claude .agents; do
-        [[ -d "${src}/${part}" ]] || continue
+        [[ -e "${src}/${part}" ]] || continue
         rm -rf "${target:?}/${part}"
         cp -R "${src}/${part}" "${target}/${part}"
         restored="${restored} ${part}"
