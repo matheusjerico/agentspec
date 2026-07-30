@@ -24,6 +24,8 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0; risk high -> TDD required | PASS | 2026-07-30T10:30Z | - | - |
+| L | design | 1 | spec-lint --phase design exit 0 (TM + TX valid, 9/9 REQs mapped) | PASS | 2026-07-30T10:40Z | - | - |
+| J | design | 1 | spec-judge FAIL (4 concerns): 1 adopted (parser totality), 3 not applicable to a single-shot pure-function CLI — disposition recorded in DESIGN | REFINE | 2026-07-30T10:45Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +37,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_FAIL_CLOSED_TABLES.md | pending (this commit) | I: re-score 15/15 |
-| Design | pending | - | - |
+| Ignition | .claude/sdd/features/DEFINE_FAIL_CLOSED_TABLES.md | 0cde200 — ignition | I: re-score 15/15 |
+| Design | .claude/sdd/features/DESIGN_FAIL_CLOSED_TABLES.md | pending (this commit) | L: PASS · J: REFINE (1 of 4 adopted) · D: 0 pauses (5 [ASSUMED] ≥ 0.90) |
 | Build | pending | - | - |
 | Ship | pending | - | - |
 | PR | pending | - | - |
@@ -58,7 +60,7 @@
 | Budget | Limit | Spent | Notes |
 |--------|-------|-------|-------|
 | Gate L regenerations | 1 per document | 0 | - |
-| Gate J refinements | 1 per document | 0 | - |
+| Gate J refinements | 1 per document | 1 | DESIGN regenerated once: parser totality |
 | Gate D pauses | un-capped (interactive) | 0 | - |
 | Build per-file retries | 3 per file | 0 | - |
 | `--max-iterations` cap | default | 0 | L+J only — never Gate D |

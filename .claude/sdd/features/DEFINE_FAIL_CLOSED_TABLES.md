@@ -9,7 +9,7 @@
 | **Feature** | FAIL_CLOSED_TABLES |
 | **Date** | 2026-07-30 |
 | **Author** | define-agent |
-| **Status** | Draft |
+| **Status** | ✅ Complete (Designed) |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/specs/2026-07-29-agentspec-architecture-remediation-design.md` §7 (Remediação 2, High — model §7.4, surfaces §7.5, rules §7.6, tests §7.8, acceptance §7.9), §15 PR B, §16 (depends on PR A, merged as #15). Inherits `docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md` (R-1..R-5). Baseline: main `71fd13a`.
