@@ -61,7 +61,9 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def _canonical_sources(
-    repo_root: Path, command_sets: list[str] | None = None
+    repo_root: Path,
+    command_sets: list[str] | None = None,
+    allow_empty: bool = False,
 ) -> list[tuple[Path, bool]]:
     skill_root = repo_root / ".claude" / "skills"
     command_root = repo_root / ".claude" / "commands"
@@ -84,7 +86,7 @@ def _canonical_sources(
     commands = [(path, True) for path in command_paths if path.name != "README.md"]
 
     sources = skills + commands
-    if not sources:
+    if not sources and not allow_empty:
         raise GenerationError("canonical source inventory is empty")
     return sources
 
@@ -127,13 +129,22 @@ instead of silently skipping it.
 
 
 def build_expected(
-    repo_root: Path, command_sets: list[str] | None = None
+    repo_root: Path,
+    command_sets: list[str] | None = None,
+    allow_empty: bool = False,
 ) -> dict[str, str]:
-    """Return relative adapter paths and their deterministic contents."""
+    """Return relative adapter paths and their deterministic contents.
+
+    ``allow_empty`` lets target-mode invocations (an explicit ``--root``)
+    treat an empty source inventory as zero adapters instead of a hard
+    failure — the target may not have synced any skills or commands yet.
+    Repo-local invocations must keep failing closed, so callers that do not
+    pass ``--root`` leave this at its default.
+    """
     repo_root = repo_root.resolve()
     expected: dict[str, str] = {}
     owners: dict[str, Path] = {}
-    for source, is_command in _canonical_sources(repo_root, command_sets):
+    for source, is_command in _canonical_sources(repo_root, command_sets, allow_empty):
         source = source.resolve()
         try:
             canonical_path = source.relative_to(repo_root).as_posix()
@@ -258,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         help="report what would be generated without writing",
     )
     args = parser.parse_args(argv)
+    allow_empty = args.root is not None
     repo_root = args.root if args.root is not None else Path(__file__).resolve().parent.parent
     repo_root = repo_root.resolve()
     command_sets = (
@@ -267,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        expected = build_expected(repo_root, command_sets)
+        expected = build_expected(repo_root, command_sets, allow_empty=allow_empty)
         if args.check:
             drift = find_drift(repo_root, expected)
             if drift:

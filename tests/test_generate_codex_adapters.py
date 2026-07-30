@@ -285,6 +285,48 @@ def test_cli_plan_reports_without_writing(tmp_path):
     assert not (tmp_path / ".agents" / "skills" / "sample").exists()
 
 
+def test_target_mode_with_empty_inventory_returns_zero_adapters(gen, tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    assert gen.build_expected(tmp_path, allow_empty=True) == {}
+
+
+def test_repo_local_mode_with_empty_inventory_still_fails_closed(gen, tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    with pytest.raises(gen.GenerationError, match="canonical source inventory is empty"):
+        gen.build_expected(tmp_path)
+
+
+def test_cli_root_target_mode_empty_inventory_generates_zero_adapters(tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--root", str(tmp_path)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "generated 0 adapters" in result.stdout
+
+
+def test_cli_root_target_mode_empty_inventory_plan_reports_zero(tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--root", str(tmp_path), "--plan"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "would generate 0 adapters" in result.stdout
+    assert not (tmp_path / ".agents").exists()
+
+
 def test_cli_reports_error_to_stderr_with_exit_2(tmp_path):
     (tmp_path / ".claude" / "skills" / "bad").mkdir(parents=True)
     (tmp_path / ".claude" / "skills" / "bad" / "SKILL.md").write_text(
