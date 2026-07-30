@@ -1,0 +1,20 @@
+{
+  "turns": [
+    {
+      "dir": "turn-01",
+      "exit_code": 143,
+      "cost_usd": 1.5989270999999998,
+      "duration_seconds": 395.403416
+    },
+    {
+      "dir": "turn-02",
+      "exit_code": 0,
+      "cost_usd": 27.650305800000023,
+      "duration_seconds": 2538.601762
+    }
+  ],
+  "total_cost_usd": 29.249232900000024,
+  "session_id": "bc4b129f-e25f-44c7-a34b-5b3d4fa88e36",
+  "framework": "agentspec",
+  "budget_usd": 40.0
+}

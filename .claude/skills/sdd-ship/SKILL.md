@@ -250,6 +250,11 @@ readiness (status `⚠ Gaps`) — non-destructive, always. `/create-pr` consumes
 the artifact and revalidates the mutable rows immediately before publication;
 delete the artifact once the PR URL exists.
 
+The generated file MUST include the template's `pr_ready` YAML block and pass
+`spec-lint --phase pr-ready` before Ship records it as ready. An invalid file is
+a gap report, never a ready handoff. Record the full Ship HEAD SHA and the
+target branch resolved from the environment's authorized source.
+
 ## Summarize workflow metrics (into SHIPPED)
 
 The report's `workflow_metrics` block (schema v1, validated by the build

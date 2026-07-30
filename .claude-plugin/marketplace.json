@@ -1,7 +1,7 @@
 {
   "name": "agentspec",
   "metadata": {
-    "description": "Spec-Driven Development framework for Data Engineering — 58 agents, 24 KB domains, 31 commands, 5-phase SDD workflow"
+    "description": "Spec-Driven Development framework for Data Engineering — 58 agents, 24 KB domains, 32 commands, 5-phase SDD workflow"
   },
   "owner": {
     "name": "Matheus Jericó",
@@ -10,8 +10,8 @@
   "plugins": [
     {
       "name": "agentspec",
-      "version": "3.2.0",
-      "description": "Spec-Driven Development framework for Data Engineering — 58 agents, 24 KB domains, 5-phase SDD workflow, 31 commands",
+      "version": "3.20.0",
+      "description": "Spec-Driven Development framework for Data Engineering — 58 agents, 24 KB domains, 5-phase SDD workflow, 32 commands",
       "source": "./plugin",
       "keywords": [
         "data-engineering",

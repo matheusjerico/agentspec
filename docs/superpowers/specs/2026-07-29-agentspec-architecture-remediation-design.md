@@ -6,13 +6,13 @@
 
 | Campo | Valor |
 |---|---|
-| Status | Pronto para revisão |
+| Status | Remediações técnicas implementadas; release empírica bloqueada |
 | Data | 2026-07-29 |
 | Baseline | `03f9119..6164c32` |
 | Branch revisada | `main` |
 | Escopo revisado | PRs 5 a 13 e estado consolidado do AgentSpec |
 | Natureza | Correção, hardening, enforcement e validação de release |
-| Implementação | Não iniciada por este documento |
+| Implementação | Concluída em 2026-07-30; benchmark/dogfooding pós-remediação pendentes |
 
 ## 2. Objetivo
 
@@ -1024,3 +1024,33 @@ Executar o **PR A — Critical parser bypass**.
 Report com finding Critical aberto receba PASS. Enquanto esse bypass existir,
 Gate R, Ship e PR Readiness não podem ser considerados fontes confiáveis de
 evidência.
+
+## Verification Summary
+
+Verificação executada em 2026-07-30 contra o código, testes, histórico Git e
+plugin empacotado.
+
+- Claims de topo verificadas: 9 grupos de remediação.
+- Confirmadas e implementadas: 9.
+- Correções realizadas nesta auditoria:
+  - PR Readiness ganhou artifact YAML, contrato, runtime Git/test/build e CLI
+    `--phase pr-ready --runtime`;
+  - `make test-all`, `make check` e o build passaram a bloquear nas três suítes;
+  - o perfil de enforcement v1 tornou artifacts novos fail-closed e preservou
+    legado somente por declaração explícita;
+  - Define e Design passaram a consumir o scanner estrutural compartilhado;
+  - `FeatureBundleContract` e `--feature-bundle` validam a cadeia cross-artifact;
+  - métricas deriváveis são reconciliadas com as tabelas do Build Report;
+  - SHA, target autorizado, merge-base/merge-tree, HEAD e reexecução de testes
+    são revalidados antes da publicação;
+  - plugin canônico foi regenerado e passou smoke/paridade.
+- Findings adicionais: 5, especificados e tratados em
+  `2026-07-30-agentspec-architecture-remediation-audit-followups.md`.
+- Claims ainda não verificáveis: 2 evidências empíricas de release — repetição
+  do benchmark TaskFlow e cinco dogfoods pós-remediação. `make release-gate`
+  falha fechado enquanto essas evidências não existirem; nenhum resultado foi
+  presumido ou fabricado.
+- Evidência automatizada final: 187 testes de raiz, 420 do Spec Linter e 75
+  offline do Spec Judge (1 live excluído por contrato), total de 682 testes
+  aprovados; `make check` e `make build`
+  aprovados.

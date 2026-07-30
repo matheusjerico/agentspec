@@ -46,6 +46,7 @@ from dataclasses import dataclass
 import yaml
 
 from ..markdown import TableError, parse_tables
+from ..sections import find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
 # Two deliberately different heading vocabularies:
@@ -55,8 +56,6 @@ from ..verdict import Finding, Level
 # - The Task Manifest SCAN is ##-only: the template places it at `##`, and
 #   this restriction keeps the section-scoping unambiguous with the
 #   `_section_after` slicing below.
-_HEADING = re.compile(r"^#{1,6}\s+(.*\S)\s*$", re.MULTILINE)
-_H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 # Traceability Matrix rows (Increment 6): design-side rows carry 6 cells
 # (#, REQ, Priority, Tasks, Tests, Verification Type) — the same
@@ -69,21 +68,18 @@ _REQ_TOKEN = re.compile(r"^REQ-\d+$")
 
 
 def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug(text)
 
 
 def _candidate_sections(artifact: str, slug_prefix: str) -> list[str]:
     """Every `##` section whose heading slug starts with `slug_prefix`, in
     document order — ALL candidates, not just the first: a fence-less decoy
     ("## Task Manifest Notes") must never shadow the real manifest section."""
-    matches = list(_H2.finditer(artifact))
-    sections: list[str] = []
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)).startswith(slug_prefix):
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            sections.append(artifact[start:end])
-    return sections
+    accepted = {slug_prefix, f"{slug_prefix}_v2"}
+    return [
+        section.body
+        for section in find_sections(artifact, accepted, level=2)
+    ]
 
 
 def _section_exact(artifact: str, slug: str) -> str | None:
@@ -93,13 +89,8 @@ def _section_exact(artifact: str, slug: str) -> str | None:
     heading ("Traceability Matrix") must never let a decoy ("## Traceability
     Matrix Notes") shadow the real section in either scan direction
     (Increment 5's decoy lesson, applied here from birth)."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)) == slug:
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
+    matches = find_sections(artifact, {slug}, level=2)
+    return matches[0].body if matches else None
 
 
 def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
@@ -162,6 +153,8 @@ class DesignPhaseContract:
         verification_keys: list[str],
         verification_types: list[str] | None = None,
         manifest_configured: bool = True,
+        require_manifest: bool = False,
+        require_matrix: bool = False,
     ) -> None:
         self.name = "sdd-phase:design"
         self._required = required_sections
@@ -177,9 +170,11 @@ class DesignPhaseContract:
         # contain a manifest-shaped section. The CLI passes False in that
         # cross-adopter configuration; True preserves every existing call.
         self._manifest_configured = manifest_configured
+        self._require_manifest = require_manifest
+        self._require_matrix = require_matrix
 
     def parse(self, artifact: str) -> _ParsedDesignPhase:
-        headings = {_slug(m.group(1)) for m in _HEADING.finditer(artifact)}
+        headings = set().union(*(heading_slugs(artifact, level=n) for n in range(1, 7)))
         manifest, broken = _parse_manifest(artifact)
         matrix_section = _section_exact(artifact, "traceability_matrix")
         matrix_present = matrix_section is not None
@@ -226,6 +221,17 @@ class DesignPhaseContract:
 
     def check(self, parsed: _ParsedDesignPhase) -> list[Finding]:
         findings = self._check_required_sections(parsed)
+        if self._require_matrix and not parsed.matrix_present:
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="TX.matrix_missing",
+                    field="Traceability Matrix",
+                    message="an enforced Design must declare a Traceability Matrix",
+                    expected="## Traceability Matrix section",
+                    found="absent",
+                )
+            )
         findings.extend(self._check_matrix(parsed))
 
         if not self._manifest_configured:
@@ -249,6 +255,17 @@ class DesignPhaseContract:
             return findings
 
         if parsed.manifest is None:
+            if self._require_manifest:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="TM.manifest_missing",
+                        field="Task Manifest (v2)",
+                        message="an enforced Design must declare an executable v2 task manifest",
+                        expected="## Task Manifest (v2) with task_manifest.manifest_version: 2",
+                        found="absent",
+                    )
+                )
             return findings
 
         findings.extend(self._check_manifest(parsed.manifest))

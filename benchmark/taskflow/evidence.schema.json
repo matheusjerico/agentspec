@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentspec.local/taskflow-evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "framework",
+    "versions",
+    "run",
+    "phases",
+    "verification",
+    "repository",
+    "pr",
+    "limitations"
+  ],
+  "properties": {
+    "framework": {"enum": ["agentspec", "superpowers"]},
+    "framework_source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_passed", "api", "ui"],
+      "properties": {
+        "all_passed": {"type": "boolean"},
+        "api": {"$ref": "#/$defs/acceptanceResult"},
+        "ui": {"$ref": "#/$defs/acceptanceResult"}
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claude", "framework"],
+      "properties": {
+        "claude": {"type": "string", "minLength": 1},
+        "framework": {"type": "string", "minLength": 1}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["order", "started_at", "ended_at", "tokens"],
+      "properties": {
+        "order": {"type": "integer", "minimum": 1, "maximum": 2},
+        "started_at": {"type": "string", "format": "date-time"},
+        "ended_at": {"type": "string", "format": "date-time"},
+        "tokens": {
+          "oneOf": [
+            {"const": "unavailable"},
+            {"type": "integer", "minimum": 0}
+          ]
+        }
+      }
+    },
+    "phases": {"type": "array", "items": {"type": "object"}},
+    "verification": {"type": "array", "items": {"type": "object"}},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "commit"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/([^/]+/)*work2/(agentspec|superpowers)(-[a-z0-9-]+)?$"
+        },
+        "commit": {"type": "string", "minLength": 3}
+      }
+    },
+    "pr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "body_path"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "body_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "acceptanceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "total"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

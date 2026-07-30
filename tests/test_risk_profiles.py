@@ -34,7 +34,7 @@ def contracts() -> dict:
 
 def test_risk_profiles_block_registered():
     risk_profiles = contracts()["risk_profiles"]
-    assert risk_profiles["rollout"] == "observe_warn"
+    assert risk_profiles["rollout"] == "enforce"
     assert risk_profiles["levels"] == ["low", "medium", "high", "critical"]
     assert risk_profiles["dimensions"] == [
         "data_loss",

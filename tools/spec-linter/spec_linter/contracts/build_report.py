@@ -345,6 +345,7 @@ class _MatrixRow:
     tasks: str
     tests: str
     result: str
+    verification_type: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,6 +372,7 @@ class _ParsedBuildReport:
     # Fence present + block None == the fence failed to parse to a mapping
     # rooted at workflow_metrics — no separate "broken" flag needed.
     metrics_block: dict | None
+    metric_facts: dict[str, object]
 
 
 class BuildReportContract:
@@ -389,6 +391,9 @@ class BuildReportContract:
         matrix_must_coverage: bool = False,
         metrics_config: dict | None = None,
         table_config: dict | None = None,
+        enforce_medium_tdd: bool = False,
+        enforce_medium_review: bool = False,
+        require_matrix: bool = False,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -416,6 +421,9 @@ class BuildReportContract:
         # Opt-in from the top-level `table_contract` block: closed vocabularies
         # for severity words and column names. `None` keeps the prior posture.
         self._table_config = table_config
+        self._enforce_medium_tdd = enforce_medium_tdd
+        self._enforce_medium_review = enforce_medium_review
+        self._require_matrix = require_matrix
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = heading_slugs(artifact)
@@ -480,8 +488,15 @@ class BuildReportContract:
             for table in parse_tables(name, union(name), required_columns=self._required_cells(_SURFACE_KEYS.get(name, ""))):
                 table_errors.extend(table.errors)
         blocking_open: list[str] = []
+        finding_counts: dict[str, int] = {}
         for located_table in _findings_tables(artifact, self._table_config or {}):
             table_errors.extend(located_table.table.errors)
+            for row in located_table.table.rows:
+                tokens = _severity_tokens(row.cell(located_table.severity_index))
+                for severity in ("critical", "important", "minor"):
+                    if severity in tokens:
+                        finding_counts[severity] = finding_counts.get(severity, 0) + 1
+                        break
             for entry in self._blocking_rows(located_table):
                 if entry not in blocking_open:
                     blocking_open.append(entry)
@@ -569,6 +584,11 @@ class BuildReportContract:
                             result=row.cell(
                                 index["Result"] if index["Result"] is not None else 6
                             ).lower(),
+                            verification_type=row.cell(
+                                table.header_index("Verification Type")
+                                if table.header_index("Verification Type") is not None
+                                else 5
+                            ).lower(),
                         )
                     )
 
@@ -600,6 +620,17 @@ class BuildReportContract:
             deduped.append(error)
         table_errors = deduped
 
+        fix_rounds = None
+        fix_match = _FRACTION.search(metadata.get("fix rounds used", ""))
+        if fix_match:
+            fix_rounds = int(fix_match.group(1))
+        must_rows = [row for row in matrix_rows if row.priority == "must"]
+        tests_by_type: dict[str, int] = {}
+        for row in matrix_rows:
+            for value in (part.strip() for part in row.verification_type.split(",")):
+                if value and value != "-":
+                    tests_by_type[value] = tests_by_type.get(value, 0) + 1
+
         return _ParsedBuildReport(
             headings=headings,
             metadata=metadata,
@@ -619,6 +650,22 @@ class BuildReportContract:
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
             duplicate_sections=duplicate_sections,
+            metric_facts={
+                "task_count": len(task_rows),
+                "fix_rounds": fix_rounds,
+                "findings": finding_counts,
+                "requirements": {
+                    "must_total": len(must_rows),
+                    "must_verified": sum(
+                        1 for row in must_rows if "pass" in row.result and row.tests not in ("", "-")
+                    ),
+                    "excepted": sum(
+                        1 for row in must_rows if row.tests.lower().startswith("exception:")
+                    ),
+                },
+                "tests_by_type": tests_by_type,
+                "matrix_present": matrix_present,
+            },
         )
 
     def _required_cells(self, surface: str) -> set[str] | None:
@@ -973,7 +1020,7 @@ class BuildReportContract:
             ]
         return [
             Finding(
-                level=Level.WARN,
+                level=Level.FAIL if self._enforce_medium_tdd else Level.WARN,
                 rule="BR.tdd_required_by_risk",
                 field="TDD Mode",
                 message=(
@@ -1018,7 +1065,7 @@ class BuildReportContract:
         if level in ("high", "critical"):
             severity = Level.FAIL
         elif level == "medium":
-            severity = Level.WARN
+            severity = Level.FAIL if self._enforce_medium_review else Level.WARN
         else:
             return []  # None, "low", or an unrecognized token — all silent
         reviewed = {task_id for task_id, _ in parsed.task_review_rows}
@@ -1130,11 +1177,11 @@ class BuildReportContract:
         if parsed.matrix_present:
             return []
         level = self._risk_level_token(parsed)
-        if level not in ("high", "critical"):
+        if not self._require_matrix and level not in ("high", "critical"):
             return []
         return [
             Finding(
-                level=Level.WARN,
+                level=Level.FAIL if self._require_matrix else Level.WARN,
                 rule="BR.matrix_missing",
                 field="Traceability Matrix",
                 message=(
@@ -1326,7 +1373,63 @@ class BuildReportContract:
             if key == "schema_version":
                 continue
             self._walk_metric_value(key, value, findings)
+        if any(f.rule == "BR.metrics_fabricated" for f in findings):
+            return findings
+        findings.extend(self._check_metric_reconciliation(parsed))
         return findings
+
+    @staticmethod
+    def _check_metric_reconciliation(parsed: _ParsedBuildReport) -> list[Finding]:
+        """Reconcile metrics with evidence already parsed from this report."""
+        block = parsed.metrics_block or {}
+        facts = parsed.metric_facts
+        mismatches: list[str] = []
+
+        if block.get("task_count") != facts["task_count"]:
+            mismatches.append(
+                f"task_count={block.get('task_count')!r}, derived={facts['task_count']!r}"
+            )
+        declared_rounds = block.get("fix_rounds")
+        if facts["fix_rounds"] is not None:
+            declared_final = (
+                declared_rounds.get("final") if isinstance(declared_rounds, dict) else declared_rounds
+            )
+            if declared_final != facts["fix_rounds"]:
+                mismatches.append(
+                    f"fix_rounds.final={declared_final!r}, derived={facts['fix_rounds']!r}"
+                )
+        for key in ("requirements",):
+            # These sources are optional adoption surfaces. Reconcile only when
+            # the report actually carries rows from which the metric is derivable.
+            derived = facts[key]
+            if facts["matrix_present"] and block.get(key) != derived:
+                mismatches.append(f"{key}={block.get(key)!r}, derived={derived!r}")
+        declared_findings = block.get("findings")
+        if isinstance(declared_findings, dict):
+            for severity in ("critical", "important", "minor"):
+                count = facts["findings"].get(severity, 0)
+                if declared_findings.get(severity) != count:
+                    mismatches.append(
+                        f"findings.{severity}={declared_findings.get(severity)!r}, derived={count}"
+                    )
+        reopened = block.get("reopened_tasks")
+        if isinstance(reopened, list):
+            unknown = sorted(set(reopened) - parsed.task_ids_executed)
+            if unknown:
+                mismatches.append(f"reopened_tasks contains unknown IDs: {', '.join(unknown)}")
+
+        if not mismatches:
+            return []
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="BR.metrics_reconciliation",
+                field="Workflow Metrics",
+                message="; ".join(mismatches),
+                expected="values derived from the report's evidence tables",
+                found="inconsistent declared metrics",
+            )
+        ]
 
     def _walk_metric_value(self, path: str, value: object, findings: list[Finding]) -> None:
         """Recursive fabrication scan. An unmeasured value is legal ONLY as

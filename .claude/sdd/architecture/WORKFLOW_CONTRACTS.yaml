@@ -423,8 +423,20 @@ define:
 # Derived by sdd-define, echoed by sdd-design, validated by spec-lint
 # --phase define as WARN-only RP.* findings (DefinePhaseContract). NOT part of
 # define.required_sections — extending that list would be Enforce (plan §17.2).
+enforcement_profile:
+  version: 1
+  artifact_generation:
+    new: enforce
+    legacy: warn
+  risk_profile: enforce
+  task_manifest: enforce
+  traceability: enforce
+  tdd: enforce_by_risk
+  task_review: enforce_by_risk
+  pr_readiness: enforce
+
 risk_profiles:
-  rollout: observe_warn          # Enforce is a future, versioned change
+  rollout: enforce
   levels: [low, medium, high, critical]
   dimensions: [data_loss, security, reversibility, blast_radius, migration]
   dimension_values: [none, low, medium, high, critical]
@@ -447,14 +459,14 @@ risk_profiles:
     effective_level: medium
     mode: WARN                   # never a silent low
 
-# Executable task manifest v2 (Increment 3 — opt-in, fail-closed for adopters).
+# Executable task manifest v2 (Increment 3 — mandatory for new Designs).
 # Declared by sdd-design in the DESIGN's "Task Manifest (v2)" section, validated
 # by spec-lint --phase design (DesignPhaseContract, TM.* rules), consumed by
 # sdd-build (explicit graph, no inference). A DESIGN without the block is v1:
 # zero TM findings, Build infers tasks as before.
 task_manifest:
   manifest_version: 2
-  adoption: "opt-in — a DESIGN without the block is v1: zero TM findings, Build infers as today"
+  adoption: "new artifacts: required; explicitly declared legacy artifacts: WARN adapter"
   required_task_fields: [id, title, files, verification]
   files_keys: [create, modify, tests]
   verification_keys: [red, green, regression]
@@ -486,7 +498,7 @@ tdd_policy:
   red_validity: "a broken RED command, an unrelated import error, or a pre-existing failure is not RED evidence"
   enforcement:
     high_critical_off: FAIL
-    medium_off: WARN
+    medium_off: FAIL
     low_off: silent
     no_risk_row: silent   # pre-Increment-2 reports — adoption path
 
@@ -508,7 +520,7 @@ task_review:
   dependents_blocked_on: [dirty]
   enforcement:
     high_critical_missing: FAIL     # BR.task_review_missing
-    medium_missing: WARN
+    medium_missing: FAIL
     low_missing: silent
     no_risk_row: silent             # pre-Increment-2 adoption path
     dirty_verdict: FAIL             # BR.task_review_dirty — any risk level
@@ -540,8 +552,8 @@ traceability:
     design_unknown_type: FAIL
     design_orphan_reference: WARN
     build_must_uncovered: FAIL
-    build_matrix_missing_high_critical: WARN   # adoption ramp — new artifact this increment
-    build_matrix_missing_medium_low: silent
+    build_matrix_missing_high_critical: FAIL
+    build_matrix_missing_medium_low: FAIL
 
 # Commit & parallelism policy (Increment 7). Pure conduct + data: sdd-build
 # owns the per-task commit step (Step 4.9) and the parallel dispatch policy;

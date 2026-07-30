@@ -61,7 +61,7 @@ def test_blind_first_rule_recorded():
 def test_enforcement_map():
     enforcement = contracts()["task_review"]["enforcement"]
     assert enforcement["high_critical_missing"] == "FAIL"
-    assert enforcement["medium_missing"] == "WARN"
+    assert enforcement["medium_missing"] == "FAIL"
     assert enforcement["low_missing"] == "silent"
     assert enforcement["no_risk_row"] == "silent"
     assert enforcement["dirty_verdict"] == "FAIL"

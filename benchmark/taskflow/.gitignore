@@ -1,0 +1,4 @@
+acceptance/node_modules/
+acceptance/test-results/
+.venv/
+runs/**/.claude-config/

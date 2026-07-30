@@ -289,6 +289,64 @@ def test_build_phase_legacy_report_defaults_to_warn_exit_zero(
     assert "BR.legacy_report" in out
 
 
+def test_enforcement_profile_defaults_new_artifact_to_fail_closed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data()
+    data["enforcement_profile"] = {
+        "version": 1,
+        "artifact_generation": {"new": "enforce", "legacy": "warn"},
+        "risk_profile": "enforce",
+        "task_manifest": "enforce",
+        "traceability": "enforce",
+        "tdd": "enforce_by_risk",
+        "task_review": "enforce_by_risk",
+        "pr_readiness": "enforce",
+    }
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    legacy = _VALID_BUILD_REPORT.replace("| **Schema Version** | 2 |\n", "")
+    report = _write_report(tmp_path / "BUILD_REPORT_NEW.md", legacy)
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 1
+    assert "BR.legacy_report" in capsys.readouterr().out
+
+
+def test_enforcement_profile_explicit_legacy_adapter_warns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data()
+    data["enforcement_profile"] = {
+        "version": 1,
+        "artifact_generation": {"new": "enforce", "legacy": "warn"},
+        "risk_profile": "enforce",
+        "task_manifest": "enforce",
+        "traceability": "enforce",
+        "tdd": "enforce_by_risk",
+        "task_review": "enforce_by_risk",
+        "pr_readiness": "enforce",
+    }
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    legacy = _VALID_BUILD_REPORT.replace("| **Schema Version** | 2 |\n", "")
+    report = _write_report(tmp_path / "BUILD_REPORT_LEGACY.md", legacy)
+    code = cli.main(
+        [
+            str(report),
+            "--phase",
+            "build",
+            "--contracts-file",
+            str(contracts),
+            "--artifact-generation",
+            "legacy",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "VERDICT: WARN" in out
+    assert "BR.legacy_report" in out
+
+
 def test_build_phase_legacy_report_with_legacy_mode_fail_exits_one(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

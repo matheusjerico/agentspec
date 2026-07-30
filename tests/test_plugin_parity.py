@@ -19,12 +19,13 @@ the canonical source" — not that the canonical source is wrong.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-PLUGIN_ROOT = ROOT / "plugin"
+PLUGIN_ROOT = Path(os.environ.get("AGENTSPEC_PLUGIN_ROOT", ROOT / "plugin"))
 
 # Reverse (plugin-form -> canonical-form) path rewrites, mirroring the sed
 # pairs build-plugin.sh Step 4 ("Path rewriting") applies in the forward
@@ -116,7 +117,7 @@ def test_plugin_matches_canonical(pair: tuple[str, str]) -> None:
 
     canonical_rel, plugin_rel = pair
     canonical_path = ROOT / canonical_rel
-    plugin_path = ROOT / plugin_rel
+    plugin_path = PLUGIN_ROOT / Path(plugin_rel).relative_to("plugin")
 
     assert canonical_path.is_file(), f"canonical source missing: {canonical_rel}"
 

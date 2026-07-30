@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 import yaml
 
+from ..sections import find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
 # Two deliberately different heading vocabularies:
@@ -31,26 +32,22 @@ from ..verdict import Finding, Level
 #   (observe/warn invariant: this module introduces zero new blocking paths).
 # - The Risk Profile SCAN is ##-only: a demoted "### Risk Profile" is simply
 #   not found, RP.profile_missing fires — WARN-only stakes, fail-open by design.
-_HEADING = re.compile(r"^#{1,6}\s+(.*\S)\s*$", re.MULTILINE)
-_H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 
 
 def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug(text)
 
 
 def _section_after(artifact: str, slug_prefix: str) -> str | None:
     """Text between the first `##` heading whose slug starts with
     `slug_prefix` and the next `##` heading (or end of document); `None` if
     no such heading exists."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)).startswith(slug_prefix):
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
+    # Risk Profile intentionally permits the template's prospective qualifier;
+    # both addresses are explicit, so arbitrary prefix decoys remain excluded.
+    accepted = {slug_prefix, f"{slug_prefix}_prospective"}
+    matches = find_sections(artifact, accepted, level=2)
+    return matches[0].body if matches else None
 
 
 def _parse_profile(artifact: str) -> dict | None:
@@ -91,6 +88,7 @@ class DefinePhaseContract:
         dimension_values: list[str],
         override_required: list[str],
         legacy_level: str,
+        profile_level: Level = Level.WARN,
     ) -> None:
         self.name = "sdd-phase:define"
         self._required = required_sections
@@ -99,9 +97,10 @@ class DefinePhaseContract:
         self._dimension_values = dimension_values
         self._override_required = override_required
         self._legacy_level = legacy_level
+        self._profile_level = profile_level
 
     def parse(self, artifact: str) -> _ParsedDefinePhase:
-        headings = {_slug(m.group(1)) for m in _HEADING.finditer(artifact)}
+        headings = set().union(*(heading_slugs(artifact, level=n) for n in range(1, 7)))
         return _ParsedDefinePhase(headings=headings, profile=_parse_profile(artifact))
 
     def check(self, parsed: _ParsedDefinePhase) -> list[Finding]:
@@ -147,7 +146,7 @@ class DefinePhaseContract:
 
     def _profile_missing_finding(self) -> Finding:
         return Finding(
-            level=Level.WARN,
+            level=self._profile_level,
             rule="RP.profile_missing",
             field="Risk Profile",
             message=(
@@ -168,7 +167,7 @@ class DefinePhaseContract:
             else "Risk Profile carries no 'level' field"
         )
         return Finding(
-            level=Level.WARN,
+            level=self._profile_level,
             rule="RP.level_invalid",
             field="level",
             message=message,
@@ -181,7 +180,7 @@ class DefinePhaseContract:
         if not isinstance(dimensions, dict):
             return [], [
                 Finding(
-                    level=Level.WARN,
+                    level=self._profile_level,
                     rule="RP.dimension_invalid",
                     field="dimensions",
                     message="Risk Profile carries no 'dimensions' mapping",
@@ -196,7 +195,7 @@ class DefinePhaseContract:
             if key not in self._dimensions:
                 findings.append(
                     Finding(
-                        level=Level.WARN,
+                        level=self._profile_level,
                         rule="RP.dimension_invalid",
                         field=f"dimensions.{key}",
                         message=f"unknown risk dimension '{key}'",
@@ -208,7 +207,7 @@ class DefinePhaseContract:
             if value not in self._dimension_values:
                 findings.append(
                     Finding(
-                        level=Level.WARN,
+                        level=self._profile_level,
                         rule="RP.dimension_invalid",
                         field=f"dimensions.{key}",
                         message=(
@@ -240,7 +239,7 @@ class DefinePhaseContract:
         verb = "is" if len(missing) == 1 else "are"
         return [
             Finding(
-                level=Level.WARN,
+                level=self._profile_level,
                 rule="RP.override_unjustified",
                 field="override",
                 message=(
@@ -264,7 +263,7 @@ class DefinePhaseContract:
             return []
         return [
             Finding(
-                level=Level.WARN,
+                level=self._profile_level,
                 rule="RP.level_below_dimensions",
                 field="level",
                 message=(

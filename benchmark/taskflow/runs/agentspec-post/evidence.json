@@ -1,0 +1,101 @@
+{
+  "framework": "agentspec",
+  "framework_source_commit": "a6082ebd47c7e6cf85d9b7e23cb6416be22d91db",
+  "versions": {
+    "claude": "2.1.220",
+    "framework": "3.20.0"
+  },
+  "run": {
+    "order": 1,
+    "started_at": "2026-07-30T18:20:43.852943+00:00",
+    "ended_at": "2026-07-30T19:01:28.269085+00:00",
+    "tokens": "unavailable",
+    "duration_seconds": 2394.545487,
+    "cost_usd": 23.5962294,
+    "scores": {
+      "correctness": 100,
+      "requirements_planning": 98,
+      "tests": 97,
+      "code_quality": 96,
+      "review_pr": 100,
+      "efficiency": 90
+    }
+  },
+  "acceptance": {
+    "all_passed": true,
+    "api": {
+      "passed": 15,
+      "total": 15
+    },
+    "ui": {
+      "passed": 2,
+      "total": 2
+    }
+  },
+  "phases": [
+    {
+      "name": "brainstorm_requirements",
+      "artifact": "sdd/archive/TASKFLOW/BRAINSTORM_TASKFLOW.md"
+    },
+    {
+      "name": "define",
+      "artifact": "sdd/archive/TASKFLOW/DEFINE_TASKFLOW.md"
+    },
+    {
+      "name": "design_plan",
+      "artifact": "sdd/archive/TASKFLOW/DESIGN_TASKFLOW.md"
+    },
+    {
+      "name": "build_review_ship",
+      "artifact": "sdd/archive/TASKFLOW/BUILD_REPORT_TASKFLOW.md"
+    },
+    {
+      "name": "shipped",
+      "artifact": "sdd/archive/TASKFLOW/SHIPPED_2026-07-30.md"
+    },
+    {
+      "name": "pr_ready",
+      "artifact": "sdd/reports/PR_READY_TASKFLOW.md"
+    }
+  ],
+  "verification": [
+    {
+      "command": "ruff check . && mypy app && pytest -q",
+      "result": "pass",
+      "tests": 50
+    },
+    {
+      "command": "npm run lint && npm run typecheck && npm run test -- --run && npm run build",
+      "result": "pass",
+      "tests": 15
+    },
+    {
+      "command": "npm run e2e",
+      "result": "pass",
+      "tests": 1
+    },
+    {
+      "command": "external API contract",
+      "result": "pass",
+      "tests": 15
+    },
+    {
+      "command": "external Playwright contract",
+      "result": "pass",
+      "tests": 2
+    }
+  ],
+  "repository": {
+    "path": "/Users/matheusjericopalhares/work2/agentspec-final-432cb42",
+    "commit": "b26e1e0f8cdbfd4675486c7fdd13b2efabdf975f"
+  },
+  "pr": {
+    "title": "Add TaskFlow — a local FastAPI + SQLite / React + TypeScript task manager",
+    "body_path": "PR.md"
+  },
+  "limitations": [
+    "No remote pull request or CI run was published; local PR.md and all CI-equivalent commands were verified.",
+    "Authentication used the configured Claude profile; --setting-sources project and the retained init event prove only AgentSpec was loaded as a plugin.",
+    "One benchmark pair cannot eliminate stochastic model variance."
+  ]
+}

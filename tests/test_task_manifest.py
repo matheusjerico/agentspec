@@ -59,10 +59,10 @@ def test_blocking_and_advisory_rules_are_data():
     assert rules["advisory"] == ["missing_requirements"]
 
 
-def test_adoption_is_opt_in_v1_silent():
+def test_adoption_requires_new_artifacts_and_names_legacy_adapter():
     task_manifest = contracts()["task_manifest"]
-    assert "opt-in" in task_manifest["adoption"]
-    assert "v1" in task_manifest["adoption"]
+    assert "new artifacts: required" in task_manifest["adoption"]
+    assert "legacy" in task_manifest["adoption"]
     assert "parallel_group" in task_manifest["write_conflict"]
 
 

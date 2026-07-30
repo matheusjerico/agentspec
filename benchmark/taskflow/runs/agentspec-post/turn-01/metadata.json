@@ -1,0 +1,50 @@
+{
+  "config": {
+    "framework": "agentspec",
+    "workdir": "/Users/matheusjericopalhares/work2/agentspec-final-432cb42",
+    "plugin": "/Users/matheusjericopalhares/Documents/personal/.superconductor/worktrees/agentspec/sc-pinned-josephson-1b4c/plugin",
+    "prompt": "/Users/matheusjericopalhares/Documents/personal/.superconductor/worktrees/agentspec/sc-pinned-josephson-1b4c/benchmark/taskflow/brief.md",
+    "model": "sonnet",
+    "effort": "high",
+    "budget_usd": 40.0
+  },
+  "started_at": "2026-07-30T18:20:43.852943+00:00",
+  "ended_at": "2026-07-30T18:48:39.732465+00:00",
+  "duration_seconds": 1675.879522,
+  "exit_code": 0,
+  "session_id": "b9f73e06-dba2-4e36-bc5e-8b30252348fc",
+  "cost_usd": 13.002874799999999,
+  "usage": {
+    "input_tokens": 338,
+    "cache_creation_input_tokens": 300439,
+    "cache_read_input_tokens": 29284004,
+    "output_tokens": 124522,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 300439,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 725,
+        "cache_read_input_tokens": 261781,
+        "cache_creation_input_tokens": 161,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 161
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "num_turns": 196,
+  "is_error": false,
+  "malformed_lines": 0
+}

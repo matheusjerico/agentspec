@@ -1,0 +1,39 @@
+{
+  "framework": "agentspec",
+  "versions": {"claude": "2.1.220", "framework": "3.2.0"},
+  "run": {
+    "order": 1,
+    "started_at": "2026-07-28T22:46:45-03:00",
+    "ended_at": "2026-07-28T23:29:16-03:00",
+    "tokens": "unavailable",
+    "scores": {
+      "correctness": 100,
+      "requirements_planning": 95,
+      "tests": 88,
+      "code_quality": 90,
+      "review_pr": 95,
+      "efficiency": 88
+    }
+  },
+  "phases": [
+    {"name": "brainstorm_requirements", "artifact": ".claude/sdd/archive/TASKFLOW/BRAINSTORM_TASKFLOW.md"},
+    {"name": "define", "artifact": ".claude/sdd/archive/TASKFLOW/DEFINE_TASKFLOW.md"},
+    {"name": "design_plan", "artifact": ".claude/sdd/archive/TASKFLOW/DESIGN_TASKFLOW.md"},
+    {"name": "build_review_ship", "artifact": ".claude/sdd/archive/TASKFLOW/BUILD_REPORT_TASKFLOW.md"}
+  ],
+  "verification": [
+    {"command": "ruff check . && mypy app && pytest -q", "result": "pass", "tests": 32},
+    {"command": "npm run lint && npm run type-check && npm run test -- --run && npm run build", "result": "pass", "tests": 22},
+    {"command": "npm run test:e2e", "result": "pass", "tests": 1}
+  ],
+  "repository": {
+    "path": "/Users/matheusjericopalhares/work2/agentspec",
+    "commit": "649b957"
+  },
+  "pr": {"title": "feat: add TaskFlow", "body_path": "PR.md"},
+  "limitations": [
+    "Interactive run telemetry did not expose a comparable exact token total.",
+    "The headless harness could not satisfy AgentSpec's native interactive gates; the benchmark continued in a supervised PTY.",
+    "One FastAPI/Starlette dependency deprecation warning remains."
+  ]
+}
