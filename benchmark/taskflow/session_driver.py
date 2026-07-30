@@ -37,6 +37,12 @@ ALLOWED_TOOLS = (
     "WebFetch",
     "WebSearch",
 )
+_IDENTITY_KEYS = {
+    "oauthAccount",
+    "userID",
+    "machineID",
+    "hasCompletedOnboarding",
+}
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,22 @@ def _load_session_metadata(output_dir: Path) -> dict:
     return {"turns": [], "total_cost_usd": 0.0, "session_id": None}
 
 
+def _seed_auth_identity(config_dir: Path) -> None:
+    """Copy only login identity needed by Claude; never copy user projects/plugins."""
+
+    destination = config_dir / ".claude.json"
+    source = Path.home() / ".claude.json"
+    if destination.exists() or not source.is_file():
+        return
+    try:
+        user_state = json.loads(source.read_text())
+    except (json.JSONDecodeError, OSError):
+        return
+    identity = {key: user_state[key] for key in _IDENTITY_KEYS if key in user_state}
+    destination.write_text(json.dumps(identity))
+    destination.chmod(0o600)
+
+
 def run(
     config: RunConfig,
     output_dir: Path,
@@ -132,6 +154,7 @@ def run(
     started = datetime.now(UTC)
     config_dir = output_dir / ".claude-config"
     config_dir.mkdir(exist_ok=True)
+    _seed_auth_identity(config_dir)
     environment = os.environ.copy()
     environment["CLAUDE_CONFIG_DIR"] = str(config_dir.resolve())
     result = subprocess.run(

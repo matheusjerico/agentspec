@@ -134,3 +134,36 @@ def test_run_uses_fresh_persistent_claude_config_dir(tmp_path: Path, monkeypatch
         (output / ".claude-config").resolve()
     )
     assert (output / ".claude-config").is_dir()
+
+
+def test_run_seeds_only_auth_identity(tmp_path: Path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude.json").write_text(
+        json.dumps(
+            {
+                "oauthAccount": {"accountUuid": "test"},
+                "userID": "user",
+                "machineID": "machine",
+                "hasCompletedOnboarding": True,
+                "projects": {"must-not-copy": {}},
+                "mcpServers": {"must-not-copy": {}},
+            }
+        )
+    )
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    prompt = tmp_path / "brief.md"
+    prompt.write_text("hello")
+    cfg = RunConfig(**{**config(tmp_path).__dict__, "prompt": prompt})
+    monkeypatch.setattr(subprocess, "run", _fake_result('{"type":"result"}\n'))
+
+    output = tmp_path / "runs"
+    assert run(cfg, output) == 0
+    seeded = json.loads((output / ".claude-config" / ".claude.json").read_text())
+    assert set(seeded) == {
+        "oauthAccount",
+        "userID",
+        "machineID",
+        "hasCompletedOnboarding",
+    }
+    assert "projects" not in seeded and "mcpServers" not in seeded
