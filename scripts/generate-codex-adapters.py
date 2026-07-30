@@ -55,15 +55,34 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return result
 
 
-def _canonical_sources(repo_root: Path) -> list[tuple[Path, bool]]:
+def _is_within(path: Path, root: Path) -> bool:
+    """Return True when path is root itself or lies beneath it."""
+    return path == root or root in path.parents
+
+
+def _canonical_sources(
+    repo_root: Path, command_sets: list[str] | None = None
+) -> list[tuple[Path, bool]]:
     skill_root = repo_root / ".claude" / "skills"
     command_root = repo_root / ".claude" / "commands"
-    skills = [(path, False) for path in sorted(skill_root.glob("*/SKILL.md"))]
-    commands = [
-        (path, True)
-        for path in sorted(command_root.rglob("*.md"))
-        if path.name != "README.md"
-    ]
+    agents_root = (repo_root / ".agents").resolve()
+
+    skills: list[tuple[Path, bool]] = []
+    for path in sorted(skill_root.glob("*/SKILL.md")):
+        if _is_within(path.resolve(), agents_root):
+            continue
+        skills.append((path, False))
+
+    if command_sets is None:
+        command_paths = sorted(command_root.rglob("*.md"))
+    else:
+        command_paths = sorted(
+            path
+            for command_set in command_sets
+            for path in (command_root / command_set).rglob("*.md")
+        )
+    commands = [(path, True) for path in command_paths if path.name != "README.md"]
+
     sources = skills + commands
     if not sources:
         raise GenerationError("canonical source inventory is empty")
@@ -107,12 +126,14 @@ instead of silently skipping it.
 """
 
 
-def build_expected(repo_root: Path) -> dict[str, str]:
+def build_expected(
+    repo_root: Path, command_sets: list[str] | None = None
+) -> dict[str, str]:
     """Return relative adapter paths and their deterministic contents."""
     repo_root = repo_root.resolve()
     expected: dict[str, str] = {}
     owners: dict[str, Path] = {}
-    for source, is_command in _canonical_sources(repo_root):
+    for source, is_command in _canonical_sources(repo_root, command_sets):
         source = source.resolve()
         try:
             canonical_path = source.relative_to(repo_root).as_posix()
@@ -191,11 +212,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fail when committed Codex adapters differ from canonical sources",
     )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="repository root to generate against (default: this repository)",
+    )
+    parser.add_argument(
+        "--command-sets",
+        default=None,
+        help="comma-separated command directories to include (default: all)",
+    )
     args = parser.parse_args(argv)
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = args.root if args.root is not None else Path(__file__).resolve().parent.parent
+    repo_root = repo_root.resolve()
+    command_sets = (
+        [item for item in args.command_sets.split(",") if item]
+        if args.command_sets is not None
+        else None
+    )
 
     try:
-        expected = build_expected(repo_root)
+        expected = build_expected(repo_root, command_sets)
         if args.check:
             drift = find_drift(repo_root, expected)
             if drift:

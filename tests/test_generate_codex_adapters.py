@@ -128,3 +128,73 @@ def test_cli_check_passes_for_committed_tree():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_command_sets_restrict_command_sources(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "vendor" / "apply.md", "apply")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow"])
+
+    assert set(adapters) == {"agentspec-build/SKILL.md"}
+
+
+def test_command_sets_none_keeps_every_command_directory(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "vendor" / "apply.md", "apply")
+
+    adapters = gen.build_expected(tmp_path)
+
+    assert set(adapters) == {"agentspec-build/SKILL.md", "agentspec-apply/SKILL.md"}
+
+
+def test_loose_command_files_produce_no_adapters(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "loose.md", "loose")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow"])
+
+    assert set(adapters) == {"agentspec-build/SKILL.md"}
+
+
+def test_missing_command_set_directory_is_not_an_error(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow", "review"])
+
+    assert set(adapters) == {"sample/SKILL.md"}
+
+
+def test_skill_resolving_into_agents_is_skipped_as_codex_native(gen, tmp_path):
+    native = tmp_path / ".agents" / "skills" / "native"
+    _write_source(native / "SKILL.md", "native")
+    (tmp_path / ".claude" / "skills").mkdir(parents=True)
+    (tmp_path / ".claude" / "skills" / "native").symlink_to(
+        native, target_is_directory=True
+    )
+    _write_source(tmp_path / ".claude" / "skills" / "regular" / "SKILL.md", "regular")
+
+    adapters = gen.build_expected(tmp_path)
+
+    assert set(adapters) == {"regular/SKILL.md"}
+
+
+def test_cli_root_generates_against_another_tree(tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--root",
+            str(tmp_path),
+            "--command-sets",
+            "workflow,review",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / ".agents" / "skills" / "sample" / "SKILL.md").exists()
