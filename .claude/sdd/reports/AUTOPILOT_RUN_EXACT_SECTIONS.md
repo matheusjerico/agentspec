@@ -24,6 +24,8 @@
 | Gate | Phase | Attempt | Sensor result | Outcome | Timestamp | Tokens | Cost |
 |------|-------|---------|---------------|---------|-----------|--------|------|
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0; bypass independently reproduced on main (decoy -> PASS with open Critical) | PASS | 2026-07-30T04:30Z | - | - |
+| L | design | 1 | spec-lint --phase design exit 0 (TM + TX on manifest and matrix, 8/8 REQs) | PASS | 2026-07-30T04:40Z | - | - |
+| J | design | 1 | spec-judge crashed (AttributeError in judge.py, exit 1) — sensor unavailable, second consecutive run | SKIP:crash-exit1 | 2026-07-30T04:40Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -35,8 +37,8 @@
 
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
-| Ignition | .claude/sdd/features/DEFINE_EXACT_SECTIONS.md | pending (this commit) | I: re-score 15/15 |
-| Design | pending | - | - |
+| Ignition | .claude/sdd/features/DEFINE_EXACT_SECTIONS.md | 377acac — ignition | I: re-score 15/15 |
+| Design | .claude/sdd/features/DESIGN_EXACT_SECTIONS.md | pending (this commit) | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (4 [ASSUMED] ≥ 0.90) |
 | Build | pending | - | - |
 | Ship | pending | - | - |
 | PR | pending | - | - |
