@@ -20,6 +20,17 @@
 #     kb/<each domain shipped in the plugin payload> + kb/_templates
 #     sdd/templates/  sdd/architecture/  tools/spec-linter/  tools/spec-judge/
 #     scripts/judge.py  scripts/autopilot.sh  + the managed README/_index files
+#     .agents/skills/<adapter per target skill and AgentSpec command>
+#
+#   GENERATED:
+#     .agents/skills/ — Codex adapters derived from the target's own post-sync
+#     .claude/ tree. Entries the generator does not produce (Codex-native
+#     skills) are preserved. A validation failure leaves .agents/ untouched,
+#     reports the offending source, and marks the run partial.
+#     Dry-run counts reflect the target's pre-sync tree; a predicted
+#     validation error naming an AgentSpec-owned path is typically resolved
+#     by the sync itself — re-check after --apply rather than fixing it by
+#     hand in the target.
 #
 #   MERGED:
 #     kb/_index.yaml — new payload index + the target's target-only domain
@@ -41,14 +52,14 @@
 #   --build          Run `make build` in the source repo before staging
 #   --source DIR     AgentSpec repo root (default: this script's repo)
 #   --stamp STAMP    Backup stamp (default: current YYYYmmdd-HHMMSS)
-#   --rollback       Restore each target's .claude from the --stamp backup
+#   --rollback       Restore each target's .claude and .agents from --stamp
 #   --help           Show this help
 #
 # Targets: pass directories as arguments, or list them in
 # .agentspec-rollout-targets at the repo root (gitignored) — one path per
 # line, '#' comments allowed; override the file with $AGENTSPEC_ROLLOUT_TARGETS.
 #
-# Backups: ~/.agentspec-rollout-backups/<stamp>/<target-name>/.claude
+# Backups: ~/.agentspec-rollout-backups/<stamp>/<target-name>/{.claude,.agents}
 # Exit codes: 0 success · 1 partial (a target failed/skipped) · 2 bad usage/env
 # =============================================================================
 
@@ -80,7 +91,7 @@ info() { printf '==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 
-usage() { sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,64p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -285,6 +296,32 @@ backup_target() {
     mkdir -p "$dest"
     cp -R "${target}/.claude" "${dest}/.claude"
     log "    backup: ${dest}/.claude"
+    if [[ -e "${target}/.agents" ]]; then
+        cp -R "${target}/.agents" "${dest}/.agents"
+        log "    backup: ${dest}/.agents"
+    fi
+}
+
+sync_codex_adapters() {
+    local target="$1"
+    local sets out rc line
+    sets="$(IFS=,; printf '%s' "${COMMAND_SETS[*]}")"
+
+    local args=(--root "$target" --command-sets "$sets" --preserve-unknown)
+    [[ "$MODE" == "dry-run" ]] && args+=(--plan)
+
+    rc=0
+    out="$(python3 "${SOURCE_DIR}/scripts/generate-codex-adapters.py" "${args[@]}" 2>&1)" || rc=$?
+
+    if [[ "$rc" -ne 0 ]]; then
+        log "    adapters: FAILED — ${out#error: }"
+        FAILURES=$((FAILURES + 1))
+        return 0
+    fi
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && log "    adapters: ${line}"
+    done <<< "$out"
+    return 0
 }
 
 sync_target() {
@@ -368,6 +405,8 @@ sync_target() {
     fi
     log "    scripts: replaced ${SCRIPT_FILES[*]}"
 
+    sync_codex_adapters "$target"
+
     report_preserved "$tc"
     report_unclassified "$tc"
 }
@@ -420,20 +459,28 @@ PYEOF
 
 rollback_target() {
     local target="$1"
-    local name src
+    local name src restored
     name="$(basename "$target")"
-    src="${BACKUP_ROOT}/${STAMP}/${name}/.claude"
+    src="${BACKUP_ROOT}/${STAMP}/${name}"
 
     log ""
     info "Rollback: ${target} from ${src}"
-    if [[ ! -d "$src" ]]; then
+    if [[ ! -d "${src}/.claude" && ! -d "${src}/.agents" ]]; then
         warn "no backup for ${name} at stamp ${STAMP} — skipping"
         FAILURES=$((FAILURES + 1))
         return 0
     fi
-    rm -rf "${target}/.claude"
-    cp -R "$src" "${target}/.claude"
-    log "    restored"
+
+    restored=""
+    local part
+    for part in .claude .agents; do
+        [[ -e "${src}/${part}" ]] || continue
+        rm -rf "${target:?}/${part}"
+        cp -R "${src}/${part}" "${target}/${part}"
+        restored="${restored} ${part}"
+    done
+    log "    restored:${restored}"
+    return 0
 }
 
 # --- main -------------------------------------------------------------------

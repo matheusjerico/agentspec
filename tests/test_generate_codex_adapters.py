@@ -128,3 +128,217 @@ def test_cli_check_passes_for_committed_tree():
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_command_sets_restrict_command_sources(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "vendor" / "apply.md", "apply")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow"])
+
+    assert set(adapters) == {"agentspec-build/SKILL.md"}
+
+
+def test_command_sets_none_keeps_every_command_directory(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "vendor" / "apply.md", "apply")
+
+    adapters = gen.build_expected(tmp_path)
+
+    assert set(adapters) == {"agentspec-build/SKILL.md", "agentspec-apply/SKILL.md"}
+
+
+def test_loose_command_files_produce_no_adapters(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "commands" / "workflow" / "build.md", "build")
+    _write_source(tmp_path / ".claude" / "commands" / "loose.md", "loose")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow"])
+
+    assert set(adapters) == {"agentspec-build/SKILL.md"}
+
+
+def test_missing_command_set_directory_is_not_an_error(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+
+    adapters = gen.build_expected(tmp_path, command_sets=["workflow", "review"])
+
+    assert set(adapters) == {"sample/SKILL.md"}
+
+
+def test_skill_resolving_into_agents_is_skipped_as_codex_native(gen, tmp_path):
+    native = tmp_path / ".agents" / "skills" / "native"
+    _write_source(native / "SKILL.md", "native")
+    (tmp_path / ".claude" / "skills").mkdir(parents=True)
+    (tmp_path / ".claude" / "skills" / "native").symlink_to(
+        native, target_is_directory=True
+    )
+    _write_source(tmp_path / ".claude" / "skills" / "regular" / "SKILL.md", "regular")
+
+    adapters = gen.build_expected(tmp_path)
+
+    assert set(adapters) == {"regular/SKILL.md"}
+
+
+def test_cli_root_generates_against_another_tree(tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--root",
+            str(tmp_path),
+            "--command-sets",
+            "workflow,review",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / ".agents" / "skills" / "sample" / "SKILL.md").exists()
+
+
+def test_preserve_unknown_keeps_entries_the_generator_did_not_produce(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+    native = tmp_path / ".agents" / "skills" / "native" / "SKILL.md"
+    native.parent.mkdir(parents=True)
+    native.write_text("codex-native", encoding="utf-8")
+
+    expected = gen.build_expected(tmp_path)
+    assert gen.preserved_entries(tmp_path, expected) == ["native"]
+    gen.write_adapters(tmp_path, expected, preserve_unknown=True)
+
+    assert native.read_text(encoding="utf-8") == "codex-native"
+    assert (tmp_path / ".agents" / "skills" / "sample" / "SKILL.md").exists()
+
+
+def test_preserve_unknown_still_replaces_a_generated_name(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+    stale = tmp_path / ".agents" / "skills" / "sample" / "SKILL.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("hand-written", encoding="utf-8")
+
+    gen.write_adapters(tmp_path, gen.build_expected(tmp_path), preserve_unknown=True)
+
+    assert "hand-written" not in stale.read_text(encoding="utf-8")
+    assert "Generated AgentSpec adapter" in stale.read_text(encoding="utf-8")
+
+
+def test_symlinked_output_root_is_replaced_by_a_real_directory(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (tmp_path / ".agents").mkdir()
+    (tmp_path / ".agents" / "skills").symlink_to(elsewhere, target_is_directory=True)
+
+    gen.write_adapters(tmp_path, gen.build_expected(tmp_path), preserve_unknown=True)
+
+    output_root = tmp_path / ".agents" / "skills"
+    assert output_root.is_dir() and not output_root.is_symlink()
+    assert (output_root / "sample" / "SKILL.md").exists()
+    assert elsewhere.is_dir()
+
+
+def test_malformed_source_leaves_the_tree_byte_identical(gen, tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "good" / "SKILL.md", "good")
+    (tmp_path / ".claude" / "skills" / "bad").mkdir(parents=True)
+    (tmp_path / ".claude" / "skills" / "bad" / "SKILL.md").write_text(
+        "---\nname: bad\n---\n", encoding="utf-8"
+    )
+    existing = tmp_path / ".agents" / "skills" / "existing" / "SKILL.md"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("untouched", encoding="utf-8")
+
+    with pytest.raises(gen.GenerationError, match="missing description"):
+        gen.build_expected(tmp_path)
+
+    assert existing.read_text(encoding="utf-8") == "untouched"
+    assert not (tmp_path / ".agents" / "skills" / "good").exists()
+    assert list((tmp_path / ".agents" / "skills").iterdir()) == [existing.parent]
+
+
+def test_cli_plan_reports_without_writing(tmp_path):
+    _write_source(tmp_path / ".claude" / "skills" / "sample" / "SKILL.md", "sample")
+    native = tmp_path / ".agents" / "skills" / "native" / "SKILL.md"
+    native.parent.mkdir(parents=True)
+    native.write_text("codex-native", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--root",
+            str(tmp_path),
+            "--preserve-unknown",
+            "--plan",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "would generate 1 adapters" in result.stdout
+    assert "preserved: native" in result.stdout
+    assert not (tmp_path / ".agents" / "skills" / "sample").exists()
+
+
+def test_target_mode_with_empty_inventory_returns_zero_adapters(gen, tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    assert gen.build_expected(tmp_path, allow_empty=True) == {}
+
+
+def test_repo_local_mode_with_empty_inventory_still_fails_closed(gen, tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    with pytest.raises(gen.GenerationError, match="canonical source inventory is empty"):
+        gen.build_expected(tmp_path)
+
+
+def test_cli_root_target_mode_empty_inventory_generates_zero_adapters(tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--root", str(tmp_path)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "generated 0 adapters" in result.stdout
+
+
+def test_cli_root_target_mode_empty_inventory_plan_reports_zero(tmp_path):
+    (tmp_path / ".claude").mkdir(parents=True)
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--root", str(tmp_path), "--plan"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "would generate 0 adapters" in result.stdout
+    assert not (tmp_path / ".agents").exists()
+
+
+def test_cli_reports_error_to_stderr_with_exit_2(tmp_path):
+    (tmp_path / ".claude" / "skills" / "bad").mkdir(parents=True)
+    (tmp_path / ".claude" / "skills" / "bad" / "SKILL.md").write_text(
+        "---\nname: bad\n---\n", encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--root", str(tmp_path), "--plan"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "missing description" in result.stderr

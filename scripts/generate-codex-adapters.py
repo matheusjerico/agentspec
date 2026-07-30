@@ -55,17 +55,38 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return result
 
 
-def _canonical_sources(repo_root: Path) -> list[tuple[Path, bool]]:
+def _is_within(path: Path, root: Path) -> bool:
+    """Return True when path is root itself or lies beneath it."""
+    return path == root or root in path.parents
+
+
+def _canonical_sources(
+    repo_root: Path,
+    command_sets: list[str] | None = None,
+    allow_empty: bool = False,
+) -> list[tuple[Path, bool]]:
     skill_root = repo_root / ".claude" / "skills"
     command_root = repo_root / ".claude" / "commands"
-    skills = [(path, False) for path in sorted(skill_root.glob("*/SKILL.md"))]
-    commands = [
-        (path, True)
-        for path in sorted(command_root.rglob("*.md"))
-        if path.name != "README.md"
-    ]
+    agents_root = (repo_root / ".agents").resolve()
+
+    skills: list[tuple[Path, bool]] = []
+    for path in sorted(skill_root.glob("*/SKILL.md")):
+        if _is_within(path.resolve(), agents_root):
+            continue
+        skills.append((path, False))
+
+    if command_sets is None:
+        command_paths = sorted(command_root.rglob("*.md"))
+    else:
+        command_paths = sorted(
+            path
+            for command_set in command_sets
+            for path in (command_root / command_set).rglob("*.md")
+        )
+    commands = [(path, True) for path in command_paths if path.name != "README.md"]
+
     sources = skills + commands
-    if not sources:
+    if not sources and not allow_empty:
         raise GenerationError("canonical source inventory is empty")
     return sources
 
@@ -107,12 +128,23 @@ instead of silently skipping it.
 """
 
 
-def build_expected(repo_root: Path) -> dict[str, str]:
-    """Return relative adapter paths and their deterministic contents."""
+def build_expected(
+    repo_root: Path,
+    command_sets: list[str] | None = None,
+    allow_empty: bool = False,
+) -> dict[str, str]:
+    """Return relative adapter paths and their deterministic contents.
+
+    ``allow_empty`` lets target-mode invocations (an explicit ``--root``)
+    treat an empty source inventory as zero adapters instead of a hard
+    failure — the target may not have synced any skills or commands yet.
+    Repo-local invocations must keep failing closed, so callers that do not
+    pass ``--root`` leave this at its default.
+    """
     repo_root = repo_root.resolve()
     expected: dict[str, str] = {}
     owners: dict[str, Path] = {}
-    for source, is_command in _canonical_sources(repo_root):
+    for source, is_command in _canonical_sources(repo_root, command_sets, allow_empty):
         source = source.resolve()
         try:
             canonical_path = source.relative_to(repo_root).as_posix()
@@ -163,19 +195,43 @@ def find_drift(repo_root: Path, expected: dict[str, str]) -> list[str]:
     return drift
 
 
-def write_adapters(repo_root: Path, expected: dict[str, str]) -> None:
+def preserved_entries(repo_root: Path, expected: dict[str, str]) -> list[str]:
+    """Return top-level entries under the output root the generator does not own."""
+    output_root = repo_root / ".agents" / "skills"
+    if output_root.is_symlink() or not output_root.is_dir():
+        return []
+    generated = {Path(relative).parts[0] for relative in expected}
+    return sorted(
+        entry.name for entry in output_root.iterdir() if entry.name not in generated
+    )
+
+
+def write_adapters(
+    repo_root: Path, expected: dict[str, str], preserve_unknown: bool = False
+) -> None:
     """Replace the generated skills tree only after all output is validated."""
     agents_root = repo_root / ".agents"
     agents_root.mkdir(parents=True, exist_ok=True)
+    output_root = agents_root / "skills"
     temporary = Path(tempfile.mkdtemp(prefix="skills.", dir=agents_root))
     try:
+        if preserve_unknown:
+            for name in preserved_entries(repo_root, expected):
+                source = output_root / name
+                destination = temporary / name
+                if source.is_dir() and not source.is_symlink():
+                    shutil.copytree(source, destination, symlinks=True)
+                else:
+                    shutil.copy2(source, destination, follow_symlinks=False)
+
         for relative_path, content in expected.items():
             destination = temporary / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(content, encoding="utf-8")
 
-        output_root = agents_root / "skills"
-        if output_root.exists():
+        if output_root.is_symlink() or output_root.is_file():
+            output_root.unlink()
+        elif output_root.exists():
             shutil.rmtree(output_root)
         temporary.replace(output_root)
     except Exception:
@@ -191,11 +247,39 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fail when committed Codex adapters differ from canonical sources",
     )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="repository root to generate against (default: this repository)",
+    )
+    parser.add_argument(
+        "--command-sets",
+        default=None,
+        help="comma-separated command directories to include (default: all)",
+    )
+    parser.add_argument(
+        "--preserve-unknown",
+        action="store_true",
+        help="keep entries under .agents/skills/ the generator did not produce",
+    )
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="report what would be generated without writing",
+    )
     args = parser.parse_args(argv)
-    repo_root = Path(__file__).resolve().parent.parent
+    allow_empty = args.root is not None
+    repo_root = args.root if args.root is not None else Path(__file__).resolve().parent.parent
+    repo_root = repo_root.resolve()
+    command_sets = (
+        [item for item in args.command_sets.split(",") if item]
+        if args.command_sets is not None
+        else None
+    )
 
     try:
-        expected = build_expected(repo_root)
+        expected = build_expected(repo_root, command_sets, allow_empty=allow_empty)
         if args.check:
             drift = find_drift(repo_root, expected)
             if drift:
@@ -210,8 +294,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Codex adapters are current ({len(expected)} files).")
             return 0
 
-        write_adapters(repo_root, expected)
-        print(f"Generated {len(expected)} Codex adapters in .agents/skills/.")
+        preserved = (
+            preserved_entries(repo_root, expected) if args.preserve_unknown else []
+        )
+        if args.plan:
+            print(f"would generate {len(expected)} adapters")
+        else:
+            write_adapters(repo_root, expected, args.preserve_unknown)
+            print(f"generated {len(expected)} adapters")
+        if preserved:
+            print(f"preserved: {' '.join(preserved)}")
         return 0
     except GenerationError as error:
         print(f"error: {error}", file=sys.stderr)
