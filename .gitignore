@@ -45,6 +45,8 @@ node_modules/
 # Build artifacts
 *.tmp
 plugin/BUILD-MANIFEST.json
+.plugin-build.*/
+.plugin-backup.*
 
 # Autopilot ephemeral scratch — never committed (policy: deleted at CLOSE)
 .claude/sdd/reports/.autopilot/
