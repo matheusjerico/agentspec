@@ -66,7 +66,7 @@ other repositories — everything before it is what makes that safe.
 
 ## Reading the plan
 
-Five dry-run lines deserve attention; surface them instead of skimming past:
+Six dry-run lines deserve attention; surface them instead of skimming past:
 
 - `UNCLASSIFIED (preserved, review manually): <entry>` — an unknown top-level entry
   in a target's `.claude`. The script preserves it, but the user should know it exists.
@@ -78,10 +78,17 @@ Five dry-run lines deserve attention; surface them instead of skimming past:
   does not vendor AgentSpec; check the targets file.
 - `adapters: would generate N adapters` / `generated N adapters` — the Codex
   adapter tree written to `<target>/.agents/skills/`, derived from that target's
-  own post-sync `.claude/`. Dry-run counts reflect the target's current tree.
+  own post-sync `.claude/`. Dry-run counts reflect the target's pre-sync tree.
+- `adapters: preserved: <names>` — Codex-native skills under `.agents/skills/`
+  the generator saw and left alone. This is the line that tells the user their
+  hand-authored Codex skills were recognized, not overwritten.
 - `adapters: FAILED — <source>: <reason>` — a component in that target could not
   produce a valid adapter. Its `.claude/` upgrade stands and its `.agents/` is
-  untouched; the run exits 1. Fix the reported source and rerun.
+  untouched; the run exits 1. Because the dry-run reflects the target's pre-sync
+  tree, a failure naming an AgentSpec-owned path (a payload skill, or a command
+  under one of the AgentSpec command sets) is typically resolved by the sync
+  itself — re-check after `--apply` before editing anything in the target by
+  hand. A failure naming a target-local source still needs a manual fix.
 
 ## Exit codes
 
@@ -97,7 +104,22 @@ Five dry-run lines deserve attention; surface them instead of skimming past:
 scripts/rollout-agentspec.sh --rollback --stamp <STAMP> [targets...]
 ```
 
-Restores each target's `.claude` from `~/.agentspec-rollout-backups/<stamp>/`. The
-stamp is printed at apply time; `ls ~/.agentspec-rollout-backups` lists what exists.
+Restores each target's `.claude` **and** `.agents` from
+`~/.agentspec-rollout-backups/<stamp>/`, restoring whichever of the two the stamp
+contains. The stamp is printed at apply time; `ls ~/.agentspec-rollout-backups`
+lists what exists.
+
+- **A stamp taken before this change only ever backed up `.claude`.** Rolling
+  back to one restores `.claude` but deliberately leaves the target's generated
+  `.agents/` exactly as it is — nothing removes or regenerates it. The target
+  can end up with `.agents/` adapters that reference files the restored, older
+  `.claude/` tree no longer contains. This is intended, tested behaviour, not a
+  gap to fix — a stamp only ever restores the paths it captured.
+- **`.agents/` needs the backup at least as much as `.claude/` does, usually
+  more.** Step 4 above notes that a target's `.claude` may be gitignored in its
+  own repo, making the script's backup the only safety net. That applies at
+  least as strongly to `.agents/` — for most targets this rollout creates that
+  directory for the first time, so it is even less likely to already be
+  tracked by the target's own git.
 
 For full flags and the managed-path contract, run `scripts/rollout-agentspec.sh --help`.
