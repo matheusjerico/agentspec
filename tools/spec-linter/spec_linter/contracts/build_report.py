@@ -162,26 +162,27 @@ class _MatrixRow:
     result: str
 
 
-# Disclosed residual: rows with fewer cells than the template's column
-# count are dropped without a diagnostic — a truncated MUST row evades the
-# matrix rules (mirrors the Task Reviews parser's documented trade-off).
-def _parse_matrix_rows(section: str) -> list[_MatrixRow]:
+def _parse_matrix_rows(section: str) -> tuple[list[_MatrixRow], list[str]]:
     """Numbered rows of a filled `## Traceability Matrix` section —
     build-side shape: `| # | REQ | Priority | Tasks | Tests | Verification
     Type | Result | Review |`. Rows with fewer than 8 cells, or an unfilled
-    template placeholder (`{` in the REQ or Priority cell), are dropped
-    without a diagnostic — mirrors the task-id/verdict placeholder guards
-    used elsewhere in this module."""
+    template placeholder (`{` in the REQ or Priority cell), are returned in
+    the second list and become `BR.matrix_row_malformed` FAIL findings —
+    fail-closed: a truncated MUST row must never evade the coverage rules."""
     rows: list[_MatrixRow] = []
+    malformed: list[str] = []
     for m in _NUMBERED_ROW.finditer(section):
-        cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-        if len(cells) < 8:
+        raw = m.group(0).strip()
+        cells = [c.strip() for c in raw.strip("|").split("|")]
+        if len(cells) < 8 or "{" in cells[1] or "{" in cells[2]:
+            malformed.append(raw)
             continue
-        req, priority = cells[1], cells[2].lower()
-        if "{" in req or "{" in priority:
-            continue
-        rows.append(_MatrixRow(req=req, priority=priority, tests=cells[4], result=cells[6].lower()))
-    return rows
+        rows.append(
+            _MatrixRow(
+                req=cells[1], priority=cells[2].lower(), tests=cells[4], result=cells[6].lower()
+            )
+        )
+    return rows, malformed
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,8 +196,10 @@ class _ParsedBuildReport:
     tdd_evidence_text: str
     task_ids_executed: set[str]
     task_review_rows: list[tuple[str, str]]
+    task_review_rows_malformed: list[str]
     task_reviews_section_present: bool
     matrix_rows: list[_MatrixRow]
+    matrix_rows_malformed: list[str]
     matrix_present: bool
     metrics_fence_present: bool
     # Fence present + block None == the fence failed to parse to a mapping
@@ -275,22 +278,24 @@ class BuildReportContract:
         task_reviews_section = _section_exact(artifact, "task_reviews")
         task_reviews_section_present = task_reviews_section is not None
         task_review_rows: list[tuple[str, str]] = []
+        task_review_rows_malformed: list[str] = []
         if task_reviews_section is not None:
             for m in _NUMBERED_ROW.finditer(task_reviews_section):
-                cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-                # Rows with < 5 cells are dropped without a diagnostic — a
-                # disclosed residual: at low risk (missing-rule silent) a
-                # malformed short row could evade both rules.
-                if len(cells) < 5:
+                raw = m.group(0).strip()
+                cells = [c.strip() for c in raw.strip("|").split("|")]
+                # Fail-closed: a truncated or placeholder-bearing row becomes
+                # a BR.task_review_row_malformed FAIL — never a silent drop
+                # that could hide a dirty verdict at a severity-gated risk.
+                if len(cells) < 5 or "{" in cells[1] or "{" in cells[4]:
+                    task_review_rows_malformed.append(raw)
                     continue
-                task_id, verdict = cells[1], cells[4].lower()
-                if "{" in task_id or "{" in verdict:
-                    continue  # unfilled template placeholder row, mirror task-id guard
-                task_review_rows.append((task_id, verdict))
+                task_review_rows.append((cells[1], cells[4].lower()))
 
         matrix_section = _section_exact(artifact, "traceability_matrix")
         matrix_present = matrix_section is not None
-        matrix_rows = _parse_matrix_rows(matrix_section) if matrix_section is not None else []
+        matrix_rows, matrix_rows_malformed = (
+            _parse_matrix_rows(matrix_section) if matrix_section is not None else ([], [])
+        )
 
         # First fence in the exact-slug section decides (the task-manifest
         # precedent); a workflow_metrics fence under any OTHER heading is
@@ -318,8 +323,10 @@ class BuildReportContract:
             tdd_evidence_text=tdd_evidence_text,
             task_ids_executed=task_ids_executed,
             task_review_rows=task_review_rows,
+            task_review_rows_malformed=task_review_rows_malformed,
             task_reviews_section_present=task_reviews_section_present,
             matrix_rows=matrix_rows,
+            matrix_rows_malformed=matrix_rows_malformed,
             matrix_present=matrix_present,
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
@@ -358,9 +365,11 @@ class BuildReportContract:
         if self._tdd_exception_categories is not None:
             findings.extend(self._check_tdd_exception_invalid(parsed))
         if self._task_review_verdicts is not None:
+            findings.extend(self._check_task_review_row_malformed(parsed))
             findings.extend(self._check_task_review_missing(parsed))
             findings.extend(self._check_task_review_dirty(parsed))
         if self._matrix_must_coverage:
+            findings.extend(self._check_matrix_row_malformed(parsed))
             findings.extend(self._check_matrix_must_uncovered(parsed))
             findings.extend(self._check_matrix_missing(parsed))
         if self._metrics_config is not None:
@@ -772,6 +781,50 @@ class BuildReportContract:
                 expected="## Traceability Matrix section with filled rows",
                 found="absent",
             )
+        ]
+
+    def _check_task_review_row_malformed(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """Fail-closed row grammar (Codex review finding 3): every numbered
+        Task Reviews row with <5 cells or an unfilled placeholder in
+        Task ID/Verdict is a FAIL at ANY risk level — the risk-severity gate
+        scopes `task_review_missing`, never malformation."""
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="BR.task_review_row_malformed",
+                field="Task Reviews",
+                message=(
+                    "numbered row is truncated (<5 cells) or carries an unfilled "
+                    "placeholder in Task ID/Verdict — a malformed row is a FAIL, "
+                    "never a silent drop that could hide a dirty verdict"
+                ),
+                expected="| # | Task ID | Risk | Reviewer | Verdict |",
+                found=raw,
+            )
+            for raw in parsed.task_review_rows_malformed
+        ]
+
+    def _check_matrix_row_malformed(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """Fail-closed row grammar (Codex review finding 2): every numbered
+        Traceability Matrix row with <8 cells or an unfilled placeholder in
+        REQ/Priority is a FAIL at ANY risk level — a truncated MUST row must
+        never vanish from `BR.must_uncovered`'s input."""
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="BR.matrix_row_malformed",
+                field="Traceability Matrix",
+                message=(
+                    "numbered row is truncated (<8 cells) or carries an unfilled "
+                    "placeholder in REQ/Priority — a malformed row is a FAIL, "
+                    "never a silent drop that hides a MUST from coverage"
+                ),
+                expected=(
+                    "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |"
+                ),
+                found=raw,
+            )
+            for raw in parsed.matrix_rows_malformed
         ]
 
     def _check_metrics(self, parsed: _ParsedBuildReport) -> list[Finding]:

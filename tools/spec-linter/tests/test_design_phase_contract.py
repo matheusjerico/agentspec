@@ -21,6 +21,8 @@ mirroring `SddPhaseContract`.
 
 from __future__ import annotations
 
+import pytest
+
 from spec_linter.contracts.design_phase import DesignPhaseContract
 from spec_linter.engine import lint
 from spec_linter.verdict import Level, Verdict
@@ -516,3 +518,44 @@ def test_decoy_traceability_matrix_heading_does_not_shadow() -> None:
     doc = VALID_DESIGN_WITH_MATRIX.replace("## Traceability Matrix", decoy + "## Traceability Matrix", 1)
     verdict = lint(doc, _contract_with_traceability())
     assert not any(f.rule.startswith("TX.") for f in verdict.findings)
+
+
+# --- TX.matrix_row_malformed (fail-closed, Codex review finding 2) ------------
+
+
+def _raw_matrix_section(raw_rows: list[str]) -> str:
+    lines = [
+        "\n## Traceability Matrix\n",
+        "| # | REQ | Priority | Tasks | Tests | Verification Type |",
+        "|---|-----|----------|-------|-------|-------------------|",
+    ]
+    lines.extend(raw_rows)
+    return "\n".join(lines) + "\n"
+
+
+def test_truncated_design_matrix_row_fails_malformed() -> None:
+    doc = VALID_DESIGN + _raw_matrix_section(["| 1 | REQ-1 | MUST |"])
+    verdict = _lint_with_traceability(doc)
+    assert verdict.level == Level.FAIL
+    assert "TX.matrix_row_malformed" in [f.rule for f in verdict.findings]
+
+
+@pytest.mark.parametrize("cells", list(range(2, 6)))
+def test_design_matrix_row_every_short_cardinality_fails(cells: int) -> None:
+    row = "| 1 | " + " | ".join(["x"] * (cells - 1)) + " |"
+    doc = VALID_DESIGN + _raw_matrix_section([row])
+    verdict = _lint_with_traceability(doc)
+    assert "TX.matrix_row_malformed" in [f.rule for f in verdict.findings]
+
+
+def test_placeholder_design_matrix_row_fails_malformed() -> None:
+    doc = VALID_DESIGN + _matrix_section([("{REQ}", "MUST", "TASK-A", "unit")])
+    verdict = _lint_with_traceability(doc)
+    assert "TX.matrix_row_malformed" in [f.rule for f in verdict.findings]
+
+
+def test_intact_design_matrix_rows_no_malformed_finding() -> None:
+    doc = VALID_DESIGN + _matrix_section(VALID_MATRIX_ROWS)
+    assert "TX.matrix_row_malformed" not in [
+        f.rule for f in _lint_with_traceability(doc).findings
+    ]

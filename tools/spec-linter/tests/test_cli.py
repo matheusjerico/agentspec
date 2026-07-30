@@ -1078,3 +1078,65 @@ def test_design_phase_traceability_verification_types_not_a_list_is_error_exit_t
     code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
     assert code == 2
     assert "ERROR:" in capsys.readouterr().err
+
+
+# --- fail-closed config wiring (Codex review finding 1) -----------------------
+# A block that is PRESENT but not a mapping (null, string, list, int) must be
+# an operational error (exit 2), never a silent disarm of its rule family.
+
+
+@pytest.mark.parametrize(
+    "block", ["tdd_policy", "task_review", "traceability", "workflow_metrics"]
+)
+@pytest.mark.parametrize("bad", [None, "yes", ["x"], 7])
+def test_build_phase_present_invalid_block_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], block: str, bad: Any
+) -> None:
+    data = _build_contracts_data()
+    data[block] = bad
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT)
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "ERROR:" in err
+    assert block in err
+
+
+def test_build_phase_traceability_without_verification_types_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _build_contracts_data()
+    data["traceability"] = {"coverage": "strict"}  # dict, but no verification_types
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    report = _write_report(tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT)
+    code = cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)])
+    assert code == 2
+    assert "verification_types" in capsys.readouterr().err
+
+
+def test_build_phase_absent_blocks_stay_dormant_green(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    contracts = _write_build_contracts(tmp_path / "contracts.yaml")  # no opt-in blocks
+    report = _write_report(tmp_path / "BUILD_REPORT_CLI_SAMPLE.md", _VALID_BUILD_REPORT)
+    assert cli.main([str(report), "--phase", "build", "--contracts-file", str(contracts)]) == 0
+
+
+@pytest.mark.parametrize("block", ["task_manifest", "traceability"])
+@pytest.mark.parametrize("bad", [None, "yes", ["x"]])
+def test_design_phase_present_invalid_block_is_error_exit_two(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], block: str, bad: Any
+) -> None:
+    data = _design_contracts_data()
+    data[block] = bad
+    contracts = tmp_path / "contracts.yaml"
+    contracts.write_text(yaml.safe_dump(data))
+    doc = _write_design_doc(tmp_path / "DESIGN_CLI_SAMPLE.md", _VALID_DESIGN_DOC)
+    code = cli.main([str(doc), "--phase", "design", "--contracts-file", str(contracts)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "ERROR:" in err
+    assert block in err

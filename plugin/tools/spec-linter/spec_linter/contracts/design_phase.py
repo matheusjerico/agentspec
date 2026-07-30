@@ -102,28 +102,30 @@ def _section_exact(artifact: str, slug: str) -> str | None:
     return None
 
 
-# Disclosed residual: rows with fewer cells than the template's column
-# count are dropped without a diagnostic — a truncated MUST row evades the
-# matrix rules (mirrors the Task Reviews parser's documented trade-off).
-def _parse_matrix_rows(section: str) -> list[_MatrixRow]:
+def _parse_matrix_rows(section: str) -> tuple[list[_MatrixRow], list[str]]:
     """Numbered rows of a `## Traceability Matrix` section — design-side
     shape: `| # | REQ | Priority | Tasks | Tests | Verification Type |`.
     Rows with fewer than 6 cells, or an unfilled template placeholder
-    (`{` in the REQ or Priority cell), are dropped without a diagnostic —
-    mirrors the task-manifest placeholder guards used elsewhere in this
-    module."""
+    (`{` in the REQ or Priority cell), are returned in the second list and
+    become `TX.matrix_row_malformed` FAIL findings — fail-closed: a
+    truncated MUST row must never vanish from the coverage rules."""
     rows: list[_MatrixRow] = []
+    malformed: list[str] = []
     for m in _NUMBERED_ROW.finditer(section):
-        cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-        if len(cells) < 6:
-            continue
-        req, priority = cells[1], cells[2].lower()
-        if "{" in req or "{" in priority:
+        raw = m.group(0).strip()
+        cells = [c.strip() for c in raw.strip("|").split("|")]
+        if len(cells) < 6 or "{" in cells[1] or "{" in cells[2]:
+            malformed.append(raw)
             continue
         rows.append(
-            _MatrixRow(req=req, priority=priority, tasks=cells[3], verification_type=cells[5])
+            _MatrixRow(
+                req=cells[1],
+                priority=cells[2].lower(),
+                tasks=cells[3],
+                verification_type=cells[5],
+            )
         )
-    return rows
+    return rows, malformed
 
 
 def _parse_manifest(artifact: str) -> tuple[dict | None, bool]:
@@ -173,6 +175,7 @@ class _ParsedDesignPhase:
     manifest: dict | None
     manifest_broken: bool
     matrix_rows: list[_MatrixRow]
+    matrix_rows_malformed: list[str]
     matrix_present: bool
 
 
@@ -206,12 +209,15 @@ class DesignPhaseContract:
         manifest, broken = _parse_manifest(artifact)
         matrix_section = _section_exact(artifact, "traceability_matrix")
         matrix_present = matrix_section is not None
-        matrix_rows = _parse_matrix_rows(matrix_section) if matrix_section is not None else []
+        matrix_rows, matrix_rows_malformed = (
+            _parse_matrix_rows(matrix_section) if matrix_section is not None else ([], [])
+        )
         return _ParsedDesignPhase(
             headings=headings,
             manifest=manifest,
             manifest_broken=broken,
             matrix_rows=matrix_rows,
+            matrix_rows_malformed=matrix_rows_malformed,
             matrix_present=matrix_present,
         )
 
@@ -272,7 +278,22 @@ class DesignPhaseContract:
         in `check()`)."""
         if self._verification_types is None or not parsed.matrix_present:
             return []
-        findings = self._check_matrix_must_without_task(parsed.matrix_rows)
+        findings = [
+            Finding(
+                level=Level.FAIL,
+                rule="TX.matrix_row_malformed",
+                field="Traceability Matrix",
+                message=(
+                    "numbered row is truncated (<6 cells) or carries an unfilled "
+                    "placeholder in REQ/Priority — a malformed row is a FAIL, "
+                    "never a silent drop that hides a MUST from coverage"
+                ),
+                expected="| # | REQ | Priority | Tasks | Tests | Verification Type |",
+                found=raw,
+            )
+            for raw in parsed.matrix_rows_malformed
+        ]
+        findings.extend(self._check_matrix_must_without_task(parsed.matrix_rows))
         findings.extend(self._check_matrix_unknown_type(parsed.matrix_rows))
         if not parsed.manifest_broken:
             findings.extend(

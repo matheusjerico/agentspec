@@ -26,6 +26,10 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0 | PASS | 2026-07-30T02:10Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM + TX on manifest and matrix, 8/8 REQs) | PASS | 2026-07-30T02:20Z | - | - |
 | J | design | 1 | spec-judge crashed (AttributeError, exit 1) — sensor unavailable | SKIP:crash-exit1 | 2026-07-30T02:20Z | - | - |
+| R | build | 1 | code-reviewer branch verdict: clean-with-minors (2 warnings: stale comment, mid-file import) — live main-vs-branch repro of Codex scenarios | FAIL | 2026-07-30T03:10Z | - | - |
+| R | build | 2 | fix round 1 verified: closing verdict clean (ruff clean, parity re-verified) | PASS | 2026-07-30T03:25Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0, zero findings (hardened rules validating their own report) | PASS | 2026-07-30T03:30Z | - | - |
+| B | build | 1 | BUILD_REPORT complete; suites 172 root + 238 spec-linter; plugin build + parity exit 0; real contracts arm cleanly | PASS | 2026-07-30T03:30Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,8 +42,8 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_LINTER_FAIL_CLOSED.md | 1a0c222 — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_LINTER_FAIL_CLOSED.md | pending (this commit) | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
-| Build | pending | - | - |
+| Design | .claude/sdd/features/DESIGN_LINTER_FAIL_CLOSED.md | e769d11 — design complete | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (3 [ASSUMED] ≥ 0.90) |
+| Build | .claude/sdd/reports/BUILD_REPORT_LINTER_FAIL_CLOSED.md | pending (this commit) | R: clean (1/2 rounds) · L: PASS · B: PASS |
 | Ship | pending | - | - |
 | PR | pending | - | - |
 
