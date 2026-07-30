@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-07-28",
+  "claude": "2.1.220",
+  "python": "3.13.7",
+  "node": "v25.5.0",
+  "npm": "11.8.0",
+  "agentspec": "3.2.0",
+  "superpowers": "6.2.0",
+  "requested_root": "/work2",
+  "effective_root": "/Users/matheusjericopalhares/work2",
+  "path_deviation_reason": "/work2 is on a read-only root filesystem"
+}

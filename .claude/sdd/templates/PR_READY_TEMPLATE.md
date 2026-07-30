@@ -15,6 +15,56 @@
 | **Ship HEAD SHA** | {short sha at ship time — the verdict_unchanged anchor} |
 | **Status** | ✅ Ready / ⚠ Gaps (see Gaps section) |
 
+```yaml
+pr_ready:
+  schema_version: 1
+  feature: "{FEATURE_NAME}"
+  generated_at: "{YYYY-MM-DDTHH:MM:SSZ}"
+  ship_head_sha: "{full sha at ship time}"
+  target_branch: "{authorized target branch}"
+  target_tip_sha: "{full target tip sha validated at ship time}"
+  checks:
+    working_tree_clean:
+      result: pass
+      evidence: {source: git, reference: "git status --short at ship_head_sha"}
+    base_resolved:
+      result: pass
+      evidence: {source: git, reference: "merge-base and merge-tree against target_tip_sha"}
+    lint:
+      result: pass
+      evidence: {source: artifact, reference: "BUILD_REPORT Verification Results — Lint"}
+    types:
+      result: not_configured
+      evidence: {source: declaration, reference: "not configured, or BUILD_REPORT command"}
+    tests:
+      result: pass
+      evidence: {source: command, command: "{exact test command}", exit_code: 0}
+    build:
+      result: not_configured
+      evidence: {source: declaration, reference: "not configured, or exact build command"}
+    must_requirements_covered:
+      result: pass
+      evidence: {source: artifact, reference: "BUILD_REPORT Traceability Matrix"}
+    branch_verdict:
+      result: clean
+      evidence: {source: artifact, reference: "BUILD_REPORT Review Verdict"}
+    blocking_findings_open:
+      result: pass
+      evidence: {source: artifact, reference: "BUILD_REPORT: 0 OPEN Critical/Important"}
+    verdict_unchanged:
+      result: pass
+      evidence: {source: git, reference: "HEAD equals ship_head_sha"}
+    migration_plan:
+      result: not_applicable
+      evidence: {source: declaration, reference: "explicit n/a or DESIGN pointer"}
+    rollback_plan:
+      result: not_applicable
+      evidence: {source: declaration, reference: "explicit n/a or DESIGN pointer"}
+    residual_risks:
+      result: pass
+      evidence: {source: artifact, reference: "SHIPPED residual risks"}
+```
+
 ---
 
 ## Readiness Checklist

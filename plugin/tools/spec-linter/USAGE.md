@@ -73,7 +73,7 @@ passing. When the environment is healthy it forwards all arguments to the CLI.
 ```bash
 ./spec-lint <path>                    # lint a spec file or directory
 ./spec-lint <doc.md> --phase design   # lint a Markdown phase document
-./spec-lint <report.md> --phase build [--legacy-mode warn|fail]   # lint a BUILD_REPORT (semantic rules)
+./spec-lint <report.md> --phase build [--legacy-mode warn|fail] [--artifact-generation new|legacy]
 ./spec-lint --emit-schema OUT.json    # write the spec JSON Schema
 ```
 
@@ -81,6 +81,11 @@ passing. When the environment is healthy it forwards all arguments to the CLI.
 already on the interpreter being used.
 
 ### Exit codes (BINDING)
+
+`--artifact-generation new` is the default. When the contracts file declares
+`enforcement_profile`, new artifacts fail closed; only the explicit
+`--artifact-generation legacy` provenance claim activates the identifiable
+WARN adapter. Missing fields never infer legacy status.
 
 | Exit | Meaning |
 |------|---------|

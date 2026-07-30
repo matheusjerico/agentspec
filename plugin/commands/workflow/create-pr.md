@@ -37,6 +37,22 @@ only when no artifact exists.
    Never open a PR as a side effect of any other step.
 4. **Clean up** — delete the PR_READY artifact once the PR URL exists.
 
+The revalidation is executable, not a prose inspection. Resolve the target
+branch from the environment's authorized source, then run:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/tools/spec-linter/spec_linter/cli.py \
+  ".claude/sdd/reports/PR_READY_${FEATURE}.md" \
+  --phase pr-ready --runtime \
+  --repo . --target-branch "$TARGET_BRANCH" \
+  --test-command "$TEST_COMMAND" \
+  ${BUILD_COMMAND:+--build-command "$BUILD_COMMAND"}
+```
+
+Exit 1 or 2 blocks publication and preserves the artifact. Never substitute a
+stale branch name from the artifact when the environment exposes a newer
+authorized target.
+
 **No PR_READY artifact → the legacy conduct below applies unchanged** (standalone
 use outside the SDD flow is fully supported).
 

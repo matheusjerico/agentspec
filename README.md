@@ -10,7 +10,7 @@
 
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blueviolet?style=flat-square)](plugin/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/v3.2.0-green?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/v3.20.0-green?style=flat-square)](CHANGELOG.md)
 
 **A single AI agent reviewing your data pipeline will miss things.**<br/>
 **58 specialized agents with 24 knowledge domains will not.**
@@ -39,7 +39,7 @@ claude plugin marketplace add matheusjerico/agentspec
 claude plugin install agentspec
 ```
 
-Done. Every Claude Code session now has 58 agents, 31 commands, and 24 KB domains. Updates are one command:
+Done. Every Claude Code session now has 58 agents, 32 commands, and 24 KB domains. Updates are one command:
 
 ```bash
 claude plugin update agentspec
@@ -264,7 +264,7 @@ agentspec/
 | [Getting Started](docs/getting-started/) | Install and build your first data pipeline |
 | [Core Concepts](docs/concepts/) | SDD pillars through a data engineering lens |
 | [Tutorials](docs/tutorials/) | dbt, star schema, data quality, Spark, streaming, RAG |
-| [Reference](docs/reference/) | Full catalog: 58 agents, 31 commands, 24 KB domains |
+| [Reference](docs/reference/) | Full catalog: 58 agents, 32 commands, 24 KB domains |
 
 <br/>
 

@@ -53,6 +53,22 @@ def _lint(doc: str) -> Verdict:
     return lint(doc, _contract())
 
 
+def test_enforcement_profile_requires_manifest_and_traceability_matrix() -> None:
+    contract = DesignPhaseContract(
+        required_sections=REQUIRED_SECTIONS,
+        required_task_fields=REQUIRED_TASK_FIELDS,
+        files_keys=FILES_KEYS,
+        verification_keys=VERIFICATION_KEYS,
+        verification_types=["unit"],
+        require_manifest=True,
+        require_matrix=True,
+    )
+    doc = VALID_DESIGN.split("## Task Manifest (v2)", 1)[0]
+    verdict = lint(doc, contract)
+    assert verdict.level == Level.FAIL
+    assert {"TM.manifest_missing", "TX.matrix_missing"} <= set(_rules(verdict))
+
+
 def _rules(verdict: Verdict) -> list[str]:
     return [f.rule for f in verdict.findings]
 
@@ -305,6 +321,16 @@ def test_fenceless_decoy_section_does_not_shadow_the_manifest() -> None:
     verdict = _lint(doc)
     assert verdict.level == Level.FAIL
     assert "TM.unknown_dependency" in _rules(verdict)
+
+
+def test_task_manifest_inside_markdown_fence_is_not_live_structure() -> None:
+    doc = mutate(
+        VALID_DESIGN,
+        "## Task Manifest (v2)\n",
+        "```markdown\n## Task Manifest (v2)\n",
+    )
+    doc = mutate(doc, "\n## Code Patterns", "\n```\n\n## Code Patterns")
+    assert _lint(doc).level == Level.PASS
 
 
 def test_non_string_id_is_invalid_task() -> None:

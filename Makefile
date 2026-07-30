@@ -16,7 +16,7 @@
 SHELL := /usr/bin/env bash
 
 .DEFAULT_GOAL := help
-.PHONY: help build test check lint clean generate plugin install-deps spec-lint spec-judge
+.PHONY: help build build-release test test-all check release-gate lint clean generate plugin install-deps spec-lint spec-judge
 
 # ----------------------------------------------------------------------------
 # Help
@@ -34,15 +34,28 @@ help: ## Show this help
 # ----------------------------------------------------------------------------
 
 build: ## Full plugin build (tests + regenerate agent-router + package)
-	@./build-plugin.sh
+	@./build-plugin.sh --dev
 
-test: ## Run pytest suite
-	@python3 -m pytest tests/ -v
+build-release: ## Reproducible plugin build from a clean committed tree
+	@./build-plugin.sh --release
+
+test: test-all ## Run every blocking pytest suite
+
+test-all: ## Run root, spec-linter, and spec-judge suites
+	@python3 -m pytest tests/ -q
+	@cd tools/spec-linter && python3 -m pytest -q
+	@cd tools/spec-judge && python3 -m pytest -q -m "not live"
 
 check: ## Drift check — tests + generators in --check mode (fails on drift)
-	@python3 -m pytest tests/ -q
+	@$(MAKE) test-all
 	@python3 scripts/generate-agent-router.py --check
 	@python3 scripts/generate-codex-adapters.py --check
+
+release-gate: ## Re-run all release checks and validate post-remediation evidence
+	@python3 tools/release_gate.py \
+		docs/superpowers/reports/2026-07-30-agentspec-remediation-benchmark.md \
+		--repo . \
+		--target main
 
 generate: ## Regenerate agent-router and repo-local Codex adapters
 	@python3 scripts/generate-agent-router.py
@@ -59,9 +72,9 @@ spec-lint: ## Run the spec-linter component test suite (tools/spec-linter)
 
 spec-judge: ## Run the spec-judge component test suite (tools/spec-judge, offline)
 	@if [ -x tools/spec-judge/.venv/bin/python ]; then \
-		( cd tools/spec-judge && .venv/bin/python -m pytest -v ); \
+		( cd tools/spec-judge && .venv/bin/python -m pytest -v -m "not live" ); \
 	else \
-		( cd tools/spec-judge && python3 -m pytest -v ); \
+		( cd tools/spec-judge && python3 -m pytest -v -m "not live" ); \
 	fi
 
 # ----------------------------------------------------------------------------

@@ -9,14 +9,22 @@ set -euo pipefail
 # preserving workspace paths (.claude/sdd/features, reports, archive, storage).
 #
 # Usage:
-#   ./build-plugin.sh           # Build the plugin
+#   ./build-plugin.sh --dev     # Build from a development worktree
+#   ./build-plugin.sh --release # Build from a clean release commit
 #   ./build-plugin.sh --help    # Show this help
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SCRIPT_DIR}/.claude"
-PLUGIN_DIR="${SCRIPT_DIR}/plugin"
+FINAL_PLUGIN_DIR="${SCRIPT_DIR}/plugin"
 EXTRAS_DIR="${SCRIPT_DIR}/plugin-extras"
+BUILD_MODE="dev"
+BUILD_ROOT=""
+PLUGIN_DIR=""
+STAGED_PLUGIN_DIR=""
+BACKUP_DIR=""
+BUILD_COMMIT=""
+BUILD_TREE_STATE="clean"
 
 # Colors for output
 RED='\033[0;31m'
@@ -32,7 +40,12 @@ error() { printf "${RED}[ERROR]${NC} %s\n" "$1" >&2; }
 
 # Cleanup trap for interrupted builds
 cleanup() {
-    find "${PLUGIN_DIR:-.}" -name "*.tmp" -type f -delete 2>/dev/null || true
+    if [[ -n "${BACKUP_DIR}" && -d "${BACKUP_DIR}" && ! -d "${FINAL_PLUGIN_DIR}" ]]; then
+        mv "${BACKUP_DIR}" "${FINAL_PLUGIN_DIR}" 2>/dev/null || true
+    fi
+    [[ -n "${BUILD_ROOT}" && -d "${BUILD_ROOT}" ]] && rm -rf "${BUILD_ROOT}"
+    [[ -n "${BACKUP_DIR}" && -d "${BACKUP_DIR}" ]] && rm -rf "${BACKUP_DIR}"
+    return 0
 }
 trap cleanup EXIT
 
@@ -46,13 +59,27 @@ Packages .claude/ (source of truth) into plugin/ (distributable plugin).
 Rewrites internal paths to ${CLAUDE_PLUGIN_ROOT}/ and merges plugin-extras/.
 
 Usage:
-  ./build-plugin.sh           Build the plugin
+  ./build-plugin.sh --dev     Build from the current development worktree
+  ./build-plugin.sh --release Build from a clean Git worktree
   ./build-plugin.sh --help    Show this help
+
+The default is --dev for backwards compatibility. Both modes record the exact
+Git commit and a deterministic file hash manifest. Release mode additionally
+requires a clean Git worktree.
 
 Output: plugin/ directory ready for `claude --plugin-dir ./plugin`
 EOF
     exit 0
 fi
+
+case "${1:---dev}" in
+    --dev) BUILD_MODE="dev" ;;
+    --release) BUILD_MODE="release" ;;
+    *)
+        error "unknown option: ${1}"
+        exit 2
+        ;;
+esac
 
 # ─── Preflight ───────────────────────────────────────────────────────────────
 
@@ -61,33 +88,60 @@ if [[ ! -d "${SOURCE_DIR}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${PLUGIN_DIR}/.claude-plugin/plugin.json" ]]; then
+if [[ ! -f "${FINAL_PLUGIN_DIR}/.claude-plugin/plugin.json" ]]; then
     error "plugin/.claude-plugin/plugin.json not found. Create the manifest first."
     exit 1
 fi
 
-info "Building AgentSpec plugin from .claude/ ..."
+if ! BUILD_COMMIT="$(git -C "${SCRIPT_DIR}" rev-parse --verify HEAD 2>/dev/null)"; then
+    error "plugin builds require a Git commit (could not resolve HEAD)"
+    exit 1
+fi
+
+if [[ "${BUILD_MODE}" == "release" ]] && [[ -n "$(git -C "${SCRIPT_DIR}" status --porcelain --untracked-files=all)" ]]; then
+    error "release builds require a clean Git worktree"
+    exit 1
+fi
+if [[ -n "$(git -C "${SCRIPT_DIR}" status --porcelain --untracked-files=all)" ]]; then
+    BUILD_TREE_STATE="dirty"
+fi
+
+# Keep staging on the same filesystem as plugin/ so the final rename is atomic.
+BUILD_ROOT="$(mktemp -d "${SCRIPT_DIR}/.plugin-build.XXXXXX")"
+STAGED_PLUGIN_DIR="${BUILD_ROOT}/plugin"
+PLUGIN_DIR="${STAGED_PLUGIN_DIR}"
+mkdir -p "${PLUGIN_DIR}"
+cp -R "${FINAL_PLUGIN_DIR}/.claude-plugin" "${PLUGIN_DIR}/.claude-plugin"
+[[ -f "${FINAL_PLUGIN_DIR}/README.md" ]] && cp "${FINAL_PLUGIN_DIR}/README.md" "${PLUGIN_DIR}/README.md"
+
+info "Building AgentSpec plugin from commit ${BUILD_COMMIT} (${BUILD_MODE} mode) ..."
 
 # ─── Step 0: Run Python tests ────────────────────────────────────────────────
 # Fail fast if scripts/judge.py or scripts/generate-agent-router.py regress.
-# Tests are skipped (with a warning, not an error) when pytest is not
-# installed — we never block builds on a missing optional dev dependency.
+# Release builds fail closed when pytest is unavailable: packaging an untested
+# linter or judge would make the distributable less trustworthy than source.
 
 if [[ -d "${SCRIPT_DIR}/tests" ]]; then
-    if python3 -c "import pytest" 2>/dev/null; then
-        info "Running Python tests..."
-        # Excludes test_plugin_parity.py: it compares plugin/ against the
-        # PREVIOUS package, which is stale before this build runs. It runs
-        # post-package instead (see Step 5e below).
-        if (cd "${SCRIPT_DIR}" && python3 -m pytest tests/ -q --ignore=tests/test_plugin_parity.py >/dev/null 2>&1); then
-            ok "Python tests passed"
-        else
-            error "Python tests failed — run: python3 -m pytest tests/ -v"
-            exit 1
-        fi
-    else
-        warn "pytest not installed — skipping tests (pip install pytest to enable)"
+    if ! python3 -c "import pytest" 2>/dev/null; then
+        error "pytest is required for plugin builds — install it before packaging"
+        exit 1
     fi
+    info "Running every blocking Python suite..."
+    # Root parity compares against the previous package, so it remains a
+    # post-package check (Step 5e).
+    if ! (cd "${SCRIPT_DIR}" && python3 -m pytest tests/ -q --ignore=tests/test_plugin_parity.py >/dev/null); then
+        error "Root tests failed"
+        exit 1
+    fi
+    if ! (cd "${SCRIPT_DIR}/tools/spec-linter" && python3 -m pytest -q >/dev/null); then
+        error "Spec Linter tests failed"
+        exit 1
+    fi
+    if ! (cd "${SCRIPT_DIR}/tools/spec-judge" && python3 -m pytest -q -m "not live" >/dev/null); then
+        error "Spec Judge tests failed"
+        exit 1
+    fi
+    ok "All Python suites passed"
 fi
 
 # ─── Step 0b: Regenerate agent-router from agent frontmatter ─────────────────
@@ -95,8 +149,15 @@ fi
 # current agent set before we copy them into the plugin.
 
 if [[ -f "${SCRIPT_DIR}/scripts/generate-agent-router.py" ]]; then
-    info "Regenerating agent-router from agent frontmatter..."
-    if python3 "${SCRIPT_DIR}/scripts/generate-agent-router.py" >/dev/null; then
+    if [[ "${BUILD_MODE}" == "release" ]]; then
+        info "Checking generated agent-router sources..."
+        if python3 "${SCRIPT_DIR}/scripts/generate-agent-router.py" --check >/dev/null; then
+            ok "agent-router sources are current"
+        else
+            error "release build refuses stale generated agent-router sources"
+            exit 1
+        fi
+    elif python3 "${SCRIPT_DIR}/scripts/generate-agent-router.py" >/dev/null; then
         ok "agent-router regenerated"
     else
         error "agent-router generation failed"
@@ -106,15 +167,9 @@ else
     warn "scripts/generate-agent-router.py not found — skipping regeneration"
 fi
 
-# ─── Step 1: Clean previous build (preserve .claude-plugin/) ─────────────────
+# ─── Step 1: Prepare isolated staging tree ───────────────────────────────────
 
-info "Cleaning previous build..."
-find "${PLUGIN_DIR:?}" -mindepth 1 -maxdepth 1 \
-    ! -name '.claude-plugin' \
-    ! -name 'README.md' \
-    -exec rm -rf {} +
-
-ok "Previous build cleaned"
+ok "Staging tree prepared"
 
 # ─── Step 2: Copy components ─────────────────────────────────────────────────
 
@@ -286,21 +341,22 @@ chmod +x "${PLUGIN_DIR}/scripts/"*.sh 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/tools/spec-linter/spec-lint" 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/tools/spec-judge/spec-judge" 2>/dev/null || true
 
-# ─── Step 5d: spec-judge cross-package import smoke-check (opportunistic) ─────
+# ─── Step 5d: spec-judge cross-package import smoke-check ─────────────────────
 # The Judger imports the sibling Linter's value objects at runtime via the
 # PYTHONPATH its wrapper sets. Verify that resolves in the BUILT plugin when a
-# suitable interpreter is available — warn (never fail) if deps are absent, to
-# match this build's "don't block on a missing optional dependency" rule.
+# suitable interpreter is available. Installed dependencies make a failed
+# self-check blocking; missing runtime dependencies are also a packaging error.
 
 if [[ -x "${PLUGIN_DIR}/tools/spec-judge/spec-judge" ]]; then
-    if python3 -c "import pydantic, yaml" >/dev/null 2>&1; then
-        if "${PLUGIN_DIR}/tools/spec-judge/spec-judge" --selfcheck >/dev/null 2>&1; then
-            ok "spec-judge import smoke-check passed (spec_linter resolves in the built plugin)"
-        else
-            warn "spec-judge --selfcheck failed in the built plugin — check the sibling import"
-        fi
+    if ! python3 -c "import pydantic, yaml" >/dev/null 2>&1; then
+        error "python3 lacks pydantic/pyyaml required by the packaged Spec Judge"
+        exit 1
+    fi
+    if "${PLUGIN_DIR}/tools/spec-judge/spec-judge" --selfcheck >/dev/null 2>&1; then
+        ok "spec-judge import smoke-check passed (spec_linter resolves in the built plugin)"
     else
-        warn "python3 lacks pydantic/pyyaml — skipping spec-judge import smoke-check"
+        error "spec-judge --selfcheck failed in the built plugin"
+        exit 1
     fi
 fi
 
@@ -311,40 +367,80 @@ fi
 # we mirror it to the root after every build with `source` rewritten to
 # `./plugin`. Keeps the root copy in sync automatically and prevents drift.
 
-info "Syncing root .claude-plugin/marketplace.json..."
+info "Preparing root .claude-plugin/marketplace.json..."
 ROOT_MANIFEST="${SCRIPT_DIR}/.claude-plugin/marketplace.json"
 PLUGIN_MANIFEST="${PLUGIN_DIR}/.claude-plugin/marketplace.json"
-mkdir -p "${SCRIPT_DIR}/.claude-plugin"
+STAGED_ROOT_MANIFEST="${BUILD_ROOT}/marketplace.json"
 python3 - <<PY
 import json, pathlib
 src = pathlib.Path("${PLUGIN_MANIFEST}")
-dst = pathlib.Path("${ROOT_MANIFEST}")
+dst = pathlib.Path("${STAGED_ROOT_MANIFEST}")
 manifest = json.loads(src.read_text())
 for p in manifest.get("plugins", []):
     p["source"] = "./plugin"
 dst.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
 PY
-ok "Root .claude-plugin/marketplace.json synced"
+ok "Root marketplace manifest prepared"
+
+# ─── Step 5d: Write reproducible build provenance ────────────────────────────
+# The manifest deliberately excludes itself. Its stable ordering, content
+# hashes, commit timestamp, and normalized relative paths make two builds of
+# the same commit comparable without embedding wall-clock time or staging paths.
+
+SOURCE_DATE_EPOCH="$(git -C "${SCRIPT_DIR}" show -s --format=%ct "${BUILD_COMMIT}")"
+export SOURCE_DATE_EPOCH
+python3 - "${PLUGIN_DIR}" "${BUILD_COMMIT}" "${BUILD_MODE}" "${BUILD_TREE_STATE}" <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+commit = sys.argv[2]
+mode = sys.argv[3]
+tree_state = sys.argv[4]
+files = []
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    rel = path.relative_to(root).as_posix()
+    if rel == "BUILD-MANIFEST.json":
+        continue
+    files.append(
+        {
+            "path": rel,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "mode": format(path.stat().st_mode & 0o777, "04o"),
+        }
+    )
+payload = {
+    "schema_version": 1,
+    "commit": commit,
+    "source_date_epoch": int(os.environ["SOURCE_DATE_EPOCH"]),
+    "mode": mode,
+    "tree_state": tree_state,
+    "files": files,
+}
+(root / "BUILD-MANIFEST.json").write_text(
+    json.dumps(payload, indent=2, sort_keys=True) + "\n"
+)
+PY
+ok "Reproducible BUILD-MANIFEST.json written"
 
 # ─── Step 5e: Run plugin/ parity test (post-package) ─────────────────────────
 # Confirms plugin/ is structurally in sync with .claude/ + plugin-extras/
 # after packaging. Must run here, not in Step 0: it compares plugin/ against
 # canonical sources, and plugin/ only reflects this build once packaging,
-# rewriting, and chmod are done. Never block builds on a missing optional
-# dev dependency.
+# rewriting, and chmod are done.
 
 if [[ -f "${SCRIPT_DIR}/tests/test_plugin_parity.py" ]]; then
-    if python3 -c "import pytest" 2>/dev/null; then
-        info "Running plugin/ parity test..."
-        if (cd "${SCRIPT_DIR}" && python3 -m pytest tests/test_plugin_parity.py -q >/dev/null 2>&1); then
-            ok "Plugin parity test passed"
-        else
-            error "plugin/ diverged from canonical sources after packaging — this should be impossible; inspect the parity failures above"
-            error "run: python3 -m pytest tests/test_plugin_parity.py -v"
-            exit 1
-        fi
+    info "Running plugin/ parity test..."
+    if (cd "${SCRIPT_DIR}" && AGENTSPEC_PLUGIN_ROOT="${PLUGIN_DIR}" \
+        python3 -m pytest tests/test_plugin_parity.py -q >/dev/null 2>&1); then
+        ok "Plugin parity test passed"
     else
-        warn "pytest not installed — skipping plugin parity test (pip install pytest to enable)"
+        error "plugin/ diverged from canonical sources after packaging — inspect parity failures"
+        error "run: python3 -m pytest tests/test_plugin_parity.py -v"
+        exit 1
     fi
 fi
 
@@ -382,6 +478,40 @@ if [[ "${STALE_COUNT}" -gt 0 ]]; then
 else
     ok "No stale .claude/ paths found"
 fi
+
+# ─── Step 6b: Publish staged output transactionally ─────────────────────────
+# Nothing above mutates plugin/. Keep a rollback copy across the two renames;
+# cleanup restores it if the second rename is interrupted or fails. There is a
+# short visibility gap between renames, so this is rollback-safe rather than a
+# single atomic directory replacement.
+
+if [[ "${BUILD_MODE}" == "release" ]]; then
+    CURRENT_COMMIT="$(git -C "${SCRIPT_DIR}" rev-parse --verify HEAD)"
+    if [[ "${CURRENT_COMMIT}" != "${BUILD_COMMIT}" ]] || \
+       [[ -n "$(git -C "${SCRIPT_DIR}" status --porcelain --untracked-files=all)" ]]; then
+        error "release source changed after preflight; refusing to publish staging"
+        exit 1
+    fi
+fi
+
+BACKUP_DIR="${SCRIPT_DIR}/.plugin-backup.$$"
+mv "${FINAL_PLUGIN_DIR}" "${BACKUP_DIR}"
+if ! mv "${STAGED_PLUGIN_DIR}" "${FINAL_PLUGIN_DIR}"; then
+    mv "${BACKUP_DIR}" "${FINAL_PLUGIN_DIR}"
+    BACKUP_DIR=""
+    error "atomic plugin publish failed; previous plugin restored"
+    exit 1
+fi
+rm -rf "${BACKUP_DIR}"
+BACKUP_DIR=""
+PLUGIN_DIR="${FINAL_PLUGIN_DIR}"
+
+# Publish the derived root marketplace file using a same-directory rename.
+mkdir -p "${SCRIPT_DIR}/.claude-plugin"
+ROOT_MANIFEST_TMP="${ROOT_MANIFEST}.tmp.$$"
+cp "${STAGED_ROOT_MANIFEST}" "${ROOT_MANIFEST_TMP}"
+mv "${ROOT_MANIFEST_TMP}" "${ROOT_MANIFEST}"
+ok "Staged plugin published transactionally with rollback"
 
 # ─── Step 7: Summary ─────────────────────────────────────────────────────────
 

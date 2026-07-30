@@ -70,6 +70,8 @@ from .contracts.agent_spec import AgentSpecContract, emit_json_schema
 from .contracts.build_report import BuildReportContract
 from .contracts.define_phase import DefinePhaseContract
 from .contracts.design_phase import DesignPhaseContract
+from .contracts.feature_bundle import FeatureBundleContract, load_feature_bundle
+from .contracts.pr_readiness import PrReadyArtifactContract, PrReadinessRuntimeValidator
 from .contracts.sdd_phase import SddPhaseContract
 from .engine import lint
 from .protocol import Contract
@@ -158,7 +160,10 @@ def _phase_required_sections(phase: str, data: dict[str, Any], contracts_file: P
 
 
 def _build_report_contract(
-    data: dict[str, Any], contracts_file: Path, legacy_mode: str
+    data: dict[str, Any],
+    contracts_file: Path,
+    legacy_mode: str,
+    artifact_generation: str = "new",
 ) -> BuildReportContract:
     """Assemble the build-phase contract from the `build` block of already-loaded
     contracts data, mirroring `_phase_required_sections`'s validation style for
@@ -234,7 +239,11 @@ def _build_report_contract(
         )
     legacy_key = "autopilot" if legacy_mode == "fail" else "manual"
     try:
-        legacy_level = Level[legacy[legacy_key]]
+        legacy_level = (
+            Level.FAIL
+            if "enforcement_profile" in data and artifact_generation == "new"
+            else Level[legacy[legacy_key]]
+        )
     except (KeyError, TypeError) as exc:
         raise _OperationalError(
             f"phase 'build' report_contract.legacy.{legacy_key} is not a valid severity "
@@ -340,6 +349,7 @@ def _build_report_contract(
             )
         metrics_config = {"schema_version": metrics_schema_version, "catalog": catalog}
 
+    enforcement = _enforcement_settings(data, contracts_file, artifact_generation)
     return BuildReportContract(
         required_sections=required,
         verdicts=verdicts,
@@ -354,10 +364,59 @@ def _build_report_contract(
         matrix_must_coverage=matrix_must_coverage,
         metrics_config=metrics_config,
         table_config=table_config,
+        enforce_medium_tdd=enforcement["tdd"],
+        enforce_medium_review=enforcement["task_review"],
+        require_matrix=enforcement["traceability"],
     )
 
 
-def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> DefinePhaseContract:
+def _enforcement_settings(
+    data: dict[str, Any], contracts_file: Path, artifact_generation: str
+) -> dict[str, bool]:
+    """Resolve the versioned Observe/Warn/Enforce policy.
+
+    Legacy handling is explicit: only the caller's ``artifact_generation``
+    declaration can activate the WARN adapter. Missing schema/content never
+    infers legacy status.
+    """
+    block = data.get("enforcement_profile")
+    if block is None:
+        return {
+            key: False
+            for key in ("risk_profile", "task_manifest", "traceability", "tdd", "task_review")
+        }
+    if not isinstance(block, dict):
+        raise _OperationalError(
+            f"enforcement_profile must be a mapping in {contracts_file.name}"
+        )
+    generation = block.get("artifact_generation")
+    if not isinstance(generation, dict) or generation.get("new") not in ("warn", "enforce"):
+        raise _OperationalError(
+            f"enforcement_profile.artifact_generation.new must be warn or enforce "
+            f"in {contracts_file.name}"
+        )
+    legacy_mode = generation.get("legacy")
+    if legacy_mode != "warn":
+        raise _OperationalError(
+            f"enforcement_profile.artifact_generation.legacy must be warn "
+            f"in {contracts_file.name}"
+        )
+    allowed = {"warn", "enforce", "enforce_by_risk"}
+    resolved: dict[str, bool] = {}
+    for key in ("risk_profile", "task_manifest", "traceability", "tdd", "task_review"):
+        value = block.get(key)
+        if value not in allowed:
+            raise _OperationalError(
+                f"enforcement_profile.{key} must be one of {sorted(allowed)} "
+                f"in {contracts_file.name}"
+            )
+        resolved[key] = artifact_generation == "new" and value in ("enforce", "enforce_by_risk")
+    return resolved
+
+
+def _define_phase_contract(
+    data: dict[str, Any], contracts_file: Path, artifact_generation: str = "new"
+) -> DefinePhaseContract:
     """Assemble the define-phase contract from `define.required_sections` plus
     the top-level `risk_profiles` block of already-loaded contracts data,
     mirroring `_build_report_contract`'s validation style for every piece it
@@ -410,6 +469,7 @@ def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> Define
             f"same order (rank comparability) in {contracts_file.name}"
         )
 
+    enforcement = _enforcement_settings(data, contracts_file, artifact_generation)
     return DefinePhaseContract(
         required_sections=required,
         levels=levels,
@@ -417,10 +477,13 @@ def _define_phase_contract(data: dict[str, Any], contracts_file: Path) -> Define
         dimension_values=dimension_values,
         override_required=override_required,
         legacy_level=legacy_level,
+        profile_level=Level.FAIL if enforcement["risk_profile"] else Level.WARN,
     )
 
 
-def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> DesignPhaseContract:
+def _design_phase_contract(
+    data: dict[str, Any], contracts_file: Path, artifact_generation: str = "new"
+) -> DesignPhaseContract:
     """Assemble the design-phase contract from `design.required_sections` plus
     the top-level `task_manifest` and `traceability` blocks of already-loaded
     contracts data, mirroring `_define_phase_contract`'s validation style for
@@ -485,6 +548,7 @@ def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> Design
             )
         verification_types = types
 
+    enforcement = _enforcement_settings(data, contracts_file, artifact_generation)
     return DesignPhaseContract(
         required_sections=required,
         required_task_fields=required_task_fields,
@@ -492,25 +556,53 @@ def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> Design
         verification_keys=verification_keys,
         verification_types=verification_types,
         manifest_configured=isinstance(block, dict),
+        require_manifest=enforcement["task_manifest"],
+        require_matrix=enforcement["traceability"],
     )
 
 
-def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) -> Level:
+def _lint_phase(
+    path: Path,
+    phase: str,
+    contracts_file: Path,
+    legacy_mode: str,
+    artifact_generation: str = "new",
+    *,
+    runtime: bool = False,
+    repo: Path | None = None,
+    target_branch: str | None = None,
+    test_command: str | None = None,
+    build_command: str | None = None,
+) -> Level:
     """Lint a Markdown phase document against its phase contract."""
     data = _load_contracts_data(contracts_file)
     contract: Contract
-    if phase == "build":
-        contract = _build_report_contract(data, contracts_file, legacy_mode)
+    if phase == "pr-ready":
+        contract = PrReadyArtifactContract()
+    elif phase == "build":
+        contract = _build_report_contract(
+            data, contracts_file, legacy_mode, artifact_generation
+        )
     elif phase == "define" and isinstance(data.get("risk_profiles"), dict):
-        contract = _define_phase_contract(data, contracts_file)
+        contract = _define_phase_contract(data, contracts_file, artifact_generation)
     elif phase == "design" and (
         "task_manifest" in data or "traceability" in data
     ):
-        contract = _design_phase_contract(data, contracts_file)
+        contract = _design_phase_contract(data, contracts_file, artifact_generation)
     else:
         required = _phase_required_sections(phase, data, contracts_file)
         contract = SddPhaseContract(phase, required)
-    verdict = lint(path.read_text(encoding="utf-8"), contract)
+    artifact_text = path.read_text(encoding="utf-8")
+    verdict = lint(artifact_text, contract)
+    if phase == "pr-ready" and runtime and verdict.level != Level.FAIL:
+        parsed = contract.parse(artifact_text)
+        runtime_findings = PrReadinessRuntimeValidator(
+            (repo or Path.cwd()).resolve(),
+            target_branch=target_branch,
+            test_command=test_command,
+            build_command=build_command,
+        ).check(parsed)
+        verdict = Verdict.from_findings([*verdict.findings, *runtime_findings])
     print(f"== {path.name} (phase: {phase}) ==")
     print(verdict)
     return verdict.level
@@ -546,6 +638,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("path", nargs="?", help="spec file/dir, or phase document with --phase")
     parser.add_argument(
+        "--feature-bundle",
+        metavar="DIR",
+        type=Path,
+        help="validate DEFINE/DESIGN/BUILD_REPORT and optional SHIPPED/PR_READY as one bundle",
+    )
+    parser.add_argument(
+        "--pr-ready",
+        metavar="PATH",
+        type=Path,
+        help="external PR_READY handoff to compose with --feature-bundle",
+    )
+    parser.add_argument(
+        "--bundle-mode",
+        choices=("active", "release"),
+        default="active",
+        help="bundle lifecycle policy; release requires both SHIPPED and explicit PR_READY",
+    )
+    parser.add_argument(
         "--phase",
         metavar="NAME",
         help="lint PATH as a Markdown phase document against the named phase contract",
@@ -569,6 +679,24 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--artifact-generation",
+        choices=("new", "legacy"),
+        default="new",
+        help=(
+            "declare artifact provenance for versioned enforcement; defaults to new. "
+            "legacy is an explicit compatibility claim and produces identifiable WARNs"
+        ),
+    )
+    parser.add_argument(
+        "--runtime",
+        action="store_true",
+        help="with --phase pr-ready, revalidate mutable Git/test/build state",
+    )
+    parser.add_argument("--repo", type=Path, help="repository for PR readiness runtime checks")
+    parser.add_argument("--target-branch", help="authorized target branch for runtime validation")
+    parser.add_argument("--test-command", help="test command to re-run for PR readiness")
+    parser.add_argument("--build-command", help="build command to re-run for PR readiness")
+    parser.add_argument(
         "--emit-schema",
         metavar="OUT.json",
         type=Path,
@@ -581,13 +709,38 @@ def main(argv: list[str] | None = None) -> int:
         if args.path is None:
             return 0
 
-    if args.path is None:
+    if args.path is None and args.feature_bundle is None:
         parser.error("a path is required unless only --emit-schema is given")
 
     try:
-        if args.phase is not None:
-            level = _lint_phase(Path(args.path), args.phase, args.contracts_file, args.legacy_mode)
+        if args.feature_bundle is not None:
+            if args.path is not None or args.phase is not None:
+                parser.error("--feature-bundle cannot be combined with PATH or --phase")
+            verdict = lint(
+                load_feature_bundle(args.feature_bundle, pr_ready=args.pr_ready),
+                FeatureBundleContract(release=args.bundle_mode == "release"),
+            )
+            print(f"== {args.feature_bundle.name} (feature bundle) ==")
+            print(verdict)
+            level = verdict.level
+        elif args.phase is not None:
+            if args.pr_ready is not None or args.bundle_mode != "active":
+                parser.error("--pr-ready and --bundle-mode are only valid with --feature-bundle")
+            level = _lint_phase(
+                Path(args.path),
+                args.phase,
+                args.contracts_file,
+                args.legacy_mode,
+                args.artifact_generation,
+                runtime=args.runtime,
+                repo=args.repo,
+                target_branch=args.target_branch,
+                test_command=args.test_command,
+                build_command=args.build_command,
+            )
         else:
+            if args.pr_ready is not None or args.bundle_mode != "active":
+                parser.error("--pr-ready and --bundle-mode are only valid with --feature-bundle")
             level = _lint_path(Path(args.path))
     except FileNotFoundError as exc:
         print(f"ERROR: file not found: {exc.filename or args.path}", file=sys.stderr)

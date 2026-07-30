@@ -80,8 +80,8 @@ def test_enforcement_map():
     assert enforcement["design_unknown_type"] == "FAIL"
     assert enforcement["design_orphan_reference"] == "WARN"
     assert enforcement["build_must_uncovered"] == "FAIL"
-    assert enforcement["build_matrix_missing_high_critical"] == "WARN"
-    assert enforcement["build_matrix_missing_medium_low"] == "silent"
+    assert enforcement["build_matrix_missing_high_critical"] == "FAIL"
+    assert enforcement["build_matrix_missing_medium_low"] == "FAIL"
 
 
 def test_define_template_carries_req_id_column():

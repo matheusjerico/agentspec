@@ -58,13 +58,13 @@ workflow_metrics:
   feature: "SAMPLE_FEATURE"
   phase_duration_seconds: { build: 2551 }
   time_to_first_green_seconds: { value: null, reason: "not instrumented" }
-  task_count: 6
+  task_count: 2
   effective_parallelism: 1
   tests_by_type: { unit: 8, contract: 2, documental: 4, integration: 0 }
   reopened_tasks: 0
-  fix_rounds: { local: 1, final: 1 }
-  findings: { critical: 0, important: 2, minor: 5, by_stage: { task_review: 3, branch_review: 4 } }
-  requirements: { must_total: 6, must_verified: 6, excepted: 0 }
+  fix_rounds: { local: 1, final: 0 }
+  findings: { critical: 0, important: 1, minor: 0, by_stage: { task_review: 3, branch_review: 4 } }
+  requirements: { must_total: 0, must_verified: 0, excepted: 0 }
   operational_skips: ["J:exit3"]
   risk_overrides: 0
   tokens_cost: { value: null, reason: "platform does not expose reliable per-run tokens" }
@@ -110,6 +110,33 @@ def test_valid_metrics_block_passes() -> None:
     assert verdict.level is Level.PASS
 
 
+def test_task_count_is_reconciled_with_execution_table() -> None:
+    report = mutate(VALID_METRICS_REPORT, "task_count: 2", "task_count: 99")
+    findings = _metrics_findings(_lint(report))
+    assert [f.rule for f in findings] == ["BR.metrics_reconciliation"]
+    assert "derived=2" in findings[0].message
+
+
+def test_fix_rounds_is_reconciled_with_review_verdict() -> None:
+    report = mutate(
+        VALID_METRICS_REPORT,
+        "fix_rounds: { local: 1, final: 0 }",
+        "fix_rounds: { local: 1, final: 2 }",
+    )
+    assert [f.rule for f in _metrics_findings(_lint(report))] == [
+        "BR.metrics_reconciliation"
+    ]
+
+
+def test_reopened_task_ids_must_reference_executed_tasks() -> None:
+    report = mutate(
+        VALID_METRICS_REPORT, "reopened_tasks: 0", "reopened_tasks: [TASK-GHOST-001]"
+    )
+    findings = _metrics_findings(_lint(report))
+    assert [f.rule for f in findings] == ["BR.metrics_reconciliation"]
+    assert "unknown IDs" in findings[0].message
+
+
 def test_bare_null_fails_naming_the_key() -> None:
     report = mutate(VALID_METRICS_REPORT, "reopened_tasks: 0", "reopened_tasks: null")
     verdict = _lint(report)
@@ -147,7 +174,7 @@ def test_null_with_empty_reason_fails() -> None:
 
 
 def test_estimate_marker_in_measured_value_fails() -> None:
-    report = mutate(VALID_METRICS_REPORT, "task_count: 6", 'task_count: "approx 6"')
+    report = mutate(VALID_METRICS_REPORT, "task_count: 2", 'task_count: "approx 2"')
     findings = _metrics_findings(_lint(report))
     assert [f.rule for f in findings] == ["BR.metrics_fabricated"]
     assert "task_count" in findings[0].message
@@ -266,8 +293,8 @@ def test_sibling_reason_named_key_is_not_exempt() -> None:
     # measured key that merely ENDS in "reason" gets the marker scan.
     report = mutate(
         VALID_METRICS_REPORT,
-        "findings: { critical: 0, important: 2, minor: 5, by_stage: { task_review: 3, branch_review: 4 } }",
-        'findings: { critical: 0, important: 2, minor: 5, by_stage: { task_review: 3, branch_review: 4 }, override_reason: "approx 5" }',
+        "findings: { critical: 0, important: 1, minor: 0, by_stage: { task_review: 3, branch_review: 4 } }",
+        'findings: { critical: 0, important: 1, minor: 0, by_stage: { task_review: 3, branch_review: 4 }, override_reason: "approx 5" }',
     )
     findings = _metrics_findings(_lint(report))
     assert [f.rule for f in findings] == ["BR.metrics_fabricated"]

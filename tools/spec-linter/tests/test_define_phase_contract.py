@@ -53,6 +53,22 @@ def _lint(doc: str) -> Verdict:
     return lint(doc, _contract())
 
 
+def test_enforcement_profile_makes_missing_risk_profile_blocking() -> None:
+    contract = DefinePhaseContract(
+        required_sections=REQUIRED_SECTIONS,
+        levels=LEVELS,
+        dimensions=DIMENSIONS,
+        dimension_values=DIMENSION_VALUES,
+        override_required=OVERRIDE_REQUIRED,
+        legacy_level=LEGACY_LEVEL,
+        profile_level=Level.FAIL,
+    )
+    report = VALID_DEFINE.replace("## Risk Profile\n", "## Removed Risk Profile\n")
+    verdict = lint(report, contract)
+    assert verdict.level == Level.FAIL
+    assert "RP.profile_missing" in _rules(verdict)
+
+
 def _rules(verdict: Verdict) -> list[str]:
     return [f.rule for f in verdict.findings]
 
@@ -273,6 +289,17 @@ def test_risk_profile_heading_variant_still_parses() -> None:
     verdict = _lint(report)
     assert verdict.level == Level.PASS
     assert verdict.findings == []
+
+
+def test_risk_profile_inside_markdown_fence_is_not_live_structure() -> None:
+    report = mutate(
+        VALID_DEFINE,
+        "## Risk Profile\n",
+        "```markdown\n## Risk Profile\n",
+    )
+    report = mutate(report, "\n## Assumptions", "\n```\n\n## Assumptions")
+    verdict = _lint(report)
+    assert "RP.profile_missing" in _rules(verdict)
 
 
 def test_required_section_at_other_heading_levels_still_counts() -> None:

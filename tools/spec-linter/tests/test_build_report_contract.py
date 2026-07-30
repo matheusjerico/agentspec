@@ -356,6 +356,22 @@ def _lint_with_tdd_policy(report: str, legacy_level: Level = Level.WARN) -> Verd
     return lint(report, _contract_with_tdd_policy(legacy_level))
 
 
+def test_enforced_medium_tdd_is_blocking() -> None:
+    contract = BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=Level.WARN,
+        risk_tdd_policy=RISK_TDD_POLICY,
+        enforce_medium_tdd=True,
+    )
+    verdict = lint(_report_with_risk_and_tdd_mode("medium", "off"), contract)
+    assert verdict.level == Level.FAIL
+    assert "BR.tdd_required_by_risk" in _rules(verdict)
+
+
 def _report_with_risk_and_tdd_mode(risk_level: str, tdd_mode: str) -> str:
     """VALID_REPORT with its `TDD Mode` value set to `tdd_mode` and a new
     `Risk Level` metadata row inserted right after it — VALID_REPORT has no
@@ -566,6 +582,25 @@ def _contract_with_task_review(legacy_level: Level = Level.WARN) -> BuildReportC
 
 def _lint_with_task_review(report: str, legacy_level: Level = Level.WARN) -> Verdict:
     return lint(report, _contract_with_task_review(legacy_level))
+
+
+def test_enforced_medium_missing_task_review_is_blocking() -> None:
+    contract = BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=Level.WARN,
+        task_review_verdicts=TASK_REVIEW_VERDICTS,
+        enforce_medium_review=True,
+    )
+    report = _report_with_task_ids(
+        _report_with_risk_and_tdd_mode("medium", "off"), "TASK-001", "TASK-002"
+    )
+    verdict = lint(report, contract)
+    assert verdict.level == Level.FAIL
+    assert "BR.task_review_missing" in _rules(verdict)
 
 
 def _report_with_task_ids(report: str, task_id_1: str, task_id_2: str) -> str:
@@ -785,6 +820,22 @@ def _contract_with_matrix(legacy_level: Level = Level.WARN) -> BuildReportContra
 
 def _lint_with_matrix(report: str, legacy_level: Level = Level.WARN) -> Verdict:
     return lint(report, _contract_with_matrix(legacy_level))
+
+
+def test_enforced_matrix_is_required_at_every_risk_level() -> None:
+    contract = BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=Level.WARN,
+        matrix_must_coverage=True,
+        require_matrix=True,
+    )
+    verdict = lint(_report_with_risk_and_tdd_mode("low", "off"), contract)
+    assert verdict.level == Level.FAIL
+    assert "BR.matrix_missing" in _rules(verdict)
 
 
 def _filled_matrix_section(rows: list[tuple[str, str, str, str]]) -> str:
@@ -1192,7 +1243,8 @@ def _real_build_contract() -> BuildReportContract:
         ".claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml"
     )
     data = cli._load_contracts_data(contracts_file)
-    return cli._build_report_contract(data, contracts_file, "warn")
+    # The archive corpus is demonstrably pre-enforcement provenance.
+    return cli._build_report_contract(data, contracts_file, "warn", "legacy")
 
 
 # --- archived-corpus dogfood (spec §6.7 last bullet) --------------------------

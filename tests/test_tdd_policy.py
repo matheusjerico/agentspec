@@ -61,7 +61,7 @@ def test_enforcement_map_is_wired_semantics():
     tdd_policy = contracts()["tdd_policy"]
     enforcement = tdd_policy["enforcement"]
     assert enforcement["high_critical_off"] == "FAIL"
-    assert enforcement["medium_off"] == "WARN"
+    assert enforcement["medium_off"] == "FAIL"
     assert enforcement["low_off"] == "silent"
     assert enforcement["no_risk_row"] == "silent"
     assert "pre-existing failure" in tdd_policy["red_validity"]
