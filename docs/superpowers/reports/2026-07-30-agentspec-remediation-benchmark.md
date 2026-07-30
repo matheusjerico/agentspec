@@ -46,6 +46,7 @@ production_readiness:
   decision: go
   generated_at: "2026-07-30T19:07:45Z"
   release_source_commit: a6082ebd47c7e6cf85d9b7e23cb6416be22d91db
+  target_tip: 4ecf0976baa23d512a8d99e6813df2fd24630b2d
   benchmark:
     report: benchmark/taskflow/runs/agentspec-post/evidence.json
     framework: agentspec
