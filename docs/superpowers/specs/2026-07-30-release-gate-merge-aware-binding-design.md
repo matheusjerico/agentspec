@@ -34,6 +34,16 @@ O gate deve:
    restante;
 7. falhar fechado quando a topologia não puder ser demonstrada.
 
+O frescor do target aceita dois estados:
+
+- pré-merge: o tip remoto deve ser exatamente `target_tip`;
+- pós-merge: o tip remoto pode ser `HEAD` quando contém como ancestrais tanto
+  `target_tip` quanto `release_source_commit`.
+
+Qualquer avanço remoto que não seja o `HEAD` validado continua bloqueado. Se
+existirem commits posteriores ao merge, seus caminhos também passam pela
+política de binding descrita acima.
+
 ## Algoritmo
 
 Para determinar os commits posteriores ao source que pertencem à release, o
@@ -67,6 +77,8 @@ Os testes de regressão devem cobrir:
 - `HEAD` pós-merge com mudanças legítimas vindas do target;
 - mudança funcional real no lado da release após o source;
 - mudança funcional feita depois do merge;
+- target remoto apontando para o próprio merge validado;
+- target remoto avançado sem estar conferido no `HEAD` local;
 - `target_tip` inexistente;
 - topologia em que o source não é ancestral de `HEAD`.
 

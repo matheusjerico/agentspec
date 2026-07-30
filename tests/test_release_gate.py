@@ -11,6 +11,7 @@ import yaml
 from tools.release_gate import (
     ReleaseEvidenceError,
     _bound_path,
+    _verify_live_target,
     _verify_release_binding,
     validate_release_evidence,
 )
@@ -305,3 +306,31 @@ def test_release_binding_rejects_code_change_after_merge(tmp_path: Path) -> None
 
     with pytest.raises(ReleaseEvidenceError, match="post_merge.py"):
         _verify_release_binding(tmp_path, source, target_tip)
+
+
+def test_live_target_accepts_post_merge_head(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+    live_tip = git(tmp_path, "rev-parse", "HEAD")
+
+    _verify_live_target(
+        tmp_path,
+        frozen_tip=target_tip,
+        live_tip=live_tip,
+        source_commit=source,
+    )
+
+
+def test_live_target_rejects_advance_not_checked_out(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+    live_tip = git(tmp_path, "rev-parse", "HEAD")
+    git(tmp_path, "checkout", "release")
+
+    with pytest.raises(ReleaseEvidenceError, match="target tip changed"):
+        _verify_live_target(
+            tmp_path,
+            frozen_tip=target_tip,
+            live_tip=live_tip,
+            source_commit=source,
+        )
