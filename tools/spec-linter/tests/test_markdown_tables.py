@@ -151,11 +151,16 @@ def test_missing_header_is_reported_when_the_block_opens_with_data() -> None:
     assert len(table.rows) == 1
 
 
-def test_table_with_only_a_header_has_no_rows_and_no_row_errors() -> None:
+def test_a_header_and_delimiter_with_no_data_is_reported_not_trusted() -> None:
+    """The other side of the ambiguity rule: a table that is nothing but a
+    header and a delimiter does not occur in any real artifact (measured: zero
+    across every archived document and template), while a swallowed data row is
+    a proven bypass. So this shape is read as data and reported, rather than
+    silently trusted as an empty table."""
     body = f"{HEADER}\n{SEPARATOR}\n"
     table = parse_tables("Matrix", body)[0]
-    assert table.rows == []
-    assert table.errors == []
+    assert len(table.rows) == 2
+    assert any(error.kind is TableErrorKind.MISSING_HEADER for error in table.errors)
 
 
 def test_separator_row_is_not_data() -> None:
@@ -228,3 +233,47 @@ def test_render_is_one_line_and_names_section_and_line() -> None:
     rendered = error.render()
     assert "\n" not in rendered
     assert "Traceability Matrix" in rendered and ":3" in rendered
+
+
+# --- round-1 review fixes (PR B) ----------------------------------------------
+
+
+def test_all_dash_data_row_is_kept_not_swallowed() -> None:
+    """Review finding 3: a separator is a DELIMITER only in the position right
+    after the header. Further down it is data, and the invariant says data is
+    never silently dropped."""
+    body = "| a | b | c |\n|---|---|---|\n| 1 | x | y |\n| - | - | - |\n| 2 | z | w |\n"
+    table = parse_tables("Matrix", body)[0]
+    assert len(table.rows) == 3
+
+
+def test_escaped_backslash_before_a_pipe_is_a_real_delimiter() -> None:
+    """Review finding 4: `\\\\` is a complete self-escape, so the pipe that
+    follows delimits. A cell ending in a backslash (a Windows path) used to
+    swallow the next column."""
+    from spec_linter.markdown.tables import _split_cells
+
+    assert _split_cells(r"| a | b\\| c | d |") == ["a", "b\\", "c", "d"]
+
+
+def test_ambiguous_two_line_block_always_resolves_toward_data() -> None:
+    """Review findings 5 and 7 (Critical): `[data row, all-dash row]` is
+    structurally identical to `[header, delimiter]`, and reading it as a header
+    made the data line vanish. Resolved for EVERY caller with no vocabulary —
+    the first attempt used caller-supplied hint words and was wired into one of
+    six call sites, leaving the same bypass live in the other five."""
+    body = "| 2 | Critical | SQL injection | db.py |  |\n| - | - | - | - | - |\n"
+    table = parse_tables("Review Verdict", body)[0]
+    assert len(table.rows) == 2
+    assert any(error.kind is TableErrorKind.MISSING_HEADER for error in table.errors)
+
+
+def test_a_header_containing_an_innocent_substring_is_unaffected() -> None:
+    """The substring false positive the vocabulary approach carried: a header
+    reading "Deemed Unimportant" contains "important". With no vocabulary there
+    is nothing to match against, so the class cannot exist."""
+    body = "| # | Deemed Unimportant | Owner |\n|---|---|---|\n| 1 | x | y |\n"
+    table = parse_tables("Matrix", body)[0]
+    assert table.headers == ["#", "Deemed Unimportant", "Owner"]
+    assert len(table.rows) == 1
+    assert table.errors == []

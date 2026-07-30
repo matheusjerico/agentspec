@@ -115,10 +115,19 @@ def _split_cells(raw: str) -> list[str]:
     index = 0
     while index < len(text):
         char = text[index]
-        if char == "\\" and index + 1 < len(text) and text[index + 1] == "|":
-            current.append("|")
-            index += 2
-            continue
+        if char == "\\" and index + 1 < len(text):
+            nxt = text[index + 1]
+            if nxt == "\\":
+                # `\\` is a complete self-escape: the NEXT pipe is a real
+                # delimiter, not an escaped one. Without this, a cell ending in
+                # a backslash (a Windows path) swallowed the following column.
+                current.append("\\")
+                index += 2
+                continue
+            if nxt == "|":
+                current.append("|")
+                index += 2
+                continue
         if char == "|":
             cells.append("".join(current).strip())
             current = []
@@ -251,7 +260,10 @@ def _row_errors(
 
 
 def parse_tables(
-    section: str, body: str, *, required_columns: set[str] | None = None
+    section: str,
+    body: str,
+    *,
+    required_columns: set[str] | None = None,
 ) -> list[ParsedTable]:
     """Every table in `body`, with rows AND structural errors.
 
@@ -259,6 +271,15 @@ def parse_tables(
     columns those are is contract policy, so it is supplied by the caller
     rather than assumed here (Decision 5): plenty of legitimate tables carry
     an intentionally blank Notes cell.
+
+    A two-line block `[line, all-dash line]` is structurally identical whether
+    it is (a) a header plus its delimiter with no data, or (b) a data row
+    followed by a dash row — and reading it as (a) makes the data line vanish,
+    which is how an unresolved Critical disappeared with nothing but a blank
+    line above it. It always resolves to (b): a table that is nothing but a
+    header and a delimiter does not occur in any real artifact (measured: zero
+    across every archived document and template), while a swallowed data row is
+    a proven bypass. Erring toward visibility can only add findings.
 
     Total: any string is accepted and yields a (possibly empty) list."""
     tables: list[ParsedTable] = []
@@ -269,6 +290,12 @@ def parse_tables(
 
         data = block[1:]
         header_is_data = not _is_separator(_split_cells(data[0][1])) if data else True
+        if not header_is_data and len(data) == 1:
+            # `[line, delimiter]` and nothing else: read the line as DATA so it
+            # cannot disappear. No vocabulary, no per-surface configuration —
+            # the previous vocabulary-based tie-breaker was wired into one of
+            # six call sites and left the same bypass live in the other five.
+            header_is_data = True
         if header_is_data and _is_separator(headers):
             # A block that opens with a separator has no header at all.
             errors.append(
@@ -283,9 +310,13 @@ def parse_tables(
 
         rows: list[ParsedRow] = []
         width = len([cell for cell in headers]) if headers else 0
-        for number, text in data:
+        for position, (number, text) in enumerate(data):
             cells = _split_cells(text)
-            if _is_separator(cells):
+            # A separator is only a DELIMITER in the position right after a
+            # real header. With no header there is no delimiter, and an
+            # all-dash line further down is data either way — dropping it would
+            # break the "never nothing" invariant this module exists to hold.
+            if position == 0 and not header_is_data and _is_separator(cells):
                 continue
             row = ParsedRow(line=number, cells=cells, raw=text)
             rows.append(row)

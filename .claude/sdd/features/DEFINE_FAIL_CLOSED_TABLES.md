@@ -9,7 +9,7 @@
 | **Feature** | FAIL_CLOSED_TABLES |
 | **Date** | 2026-07-30 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | ✅ Complete (Built) |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/specs/2026-07-29-agentspec-architecture-remediation-design.md` §7 (Remediação 2, High — model §7.4, surfaces §7.5, rules §7.6, tests §7.8, acceptance §7.9), §15 PR B, §16 (depends on PR A, merged as #15). Inherits `docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md` (R-1..R-5). Baseline: main `71fd13a`.
@@ -62,7 +62,7 @@ Measurable outcomes (must include numbers):
 - [ ] 1 shared parser package; 0 remaining hand-rolled row regexes in `design_phase.py`/`build_report.py` (grep-verified)
 - [ ] 8 error kinds, each with ≥1 unit test; §7.8's 14 mandatory cases all covered
 - [ ] R-1..R-5: 5 named regression tests, each failing before the change (repros in the handoff doc)
-- [ ] Both suites green (root ≥183, spec-linter ≥334 before additions); build + parity exit 0; archived corpus 15/15 non-FAIL or explicitly migrated
+- [ ] Both suites green (root ≥183, spec-linter ≥334 before additions); build + parity exit 0; archived corpus non-FAIL (16 reports at build time) or explicitly migrated
 
 ---
 
@@ -101,7 +101,7 @@ Measurable outcomes (must include numbers):
 |------|------------|--------|
 | Technical | `.claude/` canonical; plugin parity via build | Repackage before ship |
 | Technical | Opacity is owned by `sections.py` (PR A) | The parser consumes `content_lines()`; it must not re-implement fence/comment tracking |
-| Compatibility | Archived corpus must stay valid or get an explicit migration diagnostic (§7.9 precedent from §6.7) | Dogfood test over all 15 reports |
+| Compatibility | Archived corpus must stay valid or get an explicit migration diagnostic (§7.9 precedent from §6.7) | Dogfood test over every archived report (16 at build time) |
 | Process | TDD required (high risk: every gate reads these tables) | RED before GREEN per rule |
 | Process | Fix-loop budget 2; exceeding it needs the v3.19.0 authorized override (attributed + justified) | Recorded in the report, never silent |
 | Process | Program conduct: ship → PR → verified merge → next; PR B unblocks E and F | PR B merges before PR E starts |

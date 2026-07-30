@@ -26,6 +26,13 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0; risk high -> TDD required | PASS | 2026-07-30T10:30Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM + TX valid, 9/9 REQs mapped) | PASS | 2026-07-30T10:40Z | - | - |
 | J | design | 1 | spec-judge FAIL (4 concerns): 1 adopted (parser totality), 3 not applicable to a single-shot pure-function CLI — disposition recorded in DESIGN | REFINE | 2026-07-30T10:45Z | - | - |
+| R | build | 1 | code-reviewer: dirty — 1 Critical (renamed columns hid a finding) + 3 Important | FAIL | 2026-07-30T12:10Z | - | - |
+| R | build | 2 | dirty — Critical: dash row turned a finding into a header (round-0 miss, owned by the reviewer) | FAIL | 2026-07-30T13:00Z | - | - |
+| R | build | 3 | dirty — Critical: the round-2 fix was wired into 1 of 6 call sites | FAIL | 2026-07-30T13:40Z | - | - |
+| R | build | 4 | clean-with-minors — vocabulary removed, ambiguity resolved structurally; reviewer re-derived by grep and re-measured 57 files | PASS | 2026-07-30T14:10Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (WARN: authorized fix-round override 3/2) | PASS | 2026-07-30T14:15Z | - | - |
+| B | build | 1 | BUILD_REPORT complete; 185 root + 392 spec-linter; corpus 16/16; parity green | PASS | 2026-07-30T14:15Z | - | - |
+| S | ship | 1 | pre-ship checklist: verdict clean-with-minors, 577/577 green, statuses Shipped | PASS | 2026-07-30T14:20Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,9 +45,9 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_FAIL_CLOSED_TABLES.md | 0cde200 — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_FAIL_CLOSED_TABLES.md | pending (this commit) | L: PASS · J: REFINE (1 of 4 adopted) · D: 0 pauses (5 [ASSUMED] ≥ 0.90) |
-| Build | pending | - | - |
-| Ship | pending | - | - |
+| Design | .claude/sdd/archive/FAIL_CLOSED_TABLES/DESIGN_FAIL_CLOSED_TABLES.md | 331fa39 — design complete | L: PASS · J: REFINE (1 of 4 adopted) · D: 0 pauses (5 [ASSUMED] ≥ 0.90) |
+| Build | .claude/sdd/archive/FAIL_CLOSED_TABLES/BUILD_REPORT_FAIL_CLOSED_TABLES.md | 7671bbd — build complete | R: clean-with-minors (3 rounds, authorized) · L: PASS · B: PASS |
+| Ship | .claude/sdd/archive/FAIL_CLOSED_TABLES/SHIPPED_2026-07-30.md | pending (this commit) | S: PASS |
 | PR | pending | - | - |
 
 ---
@@ -63,6 +70,7 @@
 | Gate J refinements | 1 per document | 1 | DESIGN regenerated once: parser totality |
 | Gate D pauses | un-capped (interactive) | 0 | - |
 | Build per-file retries | 3 per file | 0 | - |
+| Branch-review fix rounds | 2 (override authorized) | 3 | Each round found a distinct verdict-flipping Critical |
 | `--max-iterations` cap | default | 0 | L+J only — never Gate D |
 
 ---

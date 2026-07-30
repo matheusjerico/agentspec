@@ -644,8 +644,8 @@ table_contract:
   # Column names that carry a finding's resolution. A findings table is
   # identified by having BOTH a severity column and one of these — renaming the
   # column (R-1) no longer makes the table unrecognisable.
-  resolution_columns: [resolution, status, outcome, fix, disposition]
-  severity_columns: [severity, sev]
+  resolution_columns: [resolution, status, outcome, fix, disposition, state, result]
+  severity_columns: [severity, sev, level, impact, criticality]
   # Columns whose cells may not be empty, per surface.
   required_cells:
     review_findings: [severity]

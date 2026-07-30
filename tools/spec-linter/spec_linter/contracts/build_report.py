@@ -119,8 +119,10 @@ _FIX_ROUNDS_OVERRIDE = re.compile(
 _INCOMPLETE_MARKERS = ("⏳", "🔄", "❌")
 _BLOCKING_SEVERITIES = {"critical", "important"}
 _NON_BLOCKING_SEVERITIES = {"minor", "info", "informational", "nit", "trivial"}
-_DEFAULT_SEVERITY_COLUMNS = {"severity", "sev"}
-_DEFAULT_RESOLUTION_COLUMNS = {"resolution", "status", "outcome", "fix", "disposition"}
+_DEFAULT_SEVERITY_COLUMNS = {"severity", "sev", "level", "impact", "criticality"}
+_DEFAULT_RESOLUTION_COLUMNS = {
+    "resolution", "status", "outcome", "fix", "disposition", "state", "result",
+}
 # Identifier columns per surface: emptiness and unfilled placeholders are
 # defects HERE, never in free-text cells. Module defaults so the guarantee does
 # not depend on a repo having adopted `table_contract`; the block overrides.
@@ -218,6 +220,18 @@ _FIXED_SECTIONS: dict[str, frozenset[str]] = {
 }
 
 
+def _is_severity_cell(cell: str, vocabulary: set[str]) -> bool:
+    """Whether a cell IS a severity rather than merely mentioning one.
+
+    `Critical`, `Critical (F1)`, `**Critical**`, `🔴 Critical`, `critical/high`
+    are severities. `Critical thinking was applied` is prose that happens to
+    contain the word — and treating prose as a finding is the cry-wolf failure
+    this project counts as a security problem of its own. A severity cell is
+    short: at most one token beyond the severity word itself."""
+    tokens = _severity_tokens(cell)
+    return bool(tokens & vocabulary) and len(tokens) <= 2
+
+
 def _severity_tokens(cell: str) -> set[str]:
     """Word tokens of a severity cell, NFKC-normalised.
 
@@ -274,12 +288,27 @@ def _findings_tables(artifact: str, config: dict) -> list[_FindingsTable]:
                 None,
             )
             if severity_index is None or resolution_index is None:
+                # Recognition of a HEADED table is by column vocabulary only.
+                # A content-based fallback was tried and removed: a cell that
+                # simply IS a severity word is indistinguishable from a finding
+                # by content alone — `## Autonomous Decisions` legitimately puts
+                # "Important" in a Decision Point cell, `## Issues Encountered`
+                # in an Issue cell — and every version of the heuristic reddened
+                # a valid report. A gate that cries wolf gets routed around, so
+                # precision here is a security property, not a nicety.
+                #
+                # Disclosed residual (PR F): a findings table whose column names
+                # fall outside the vocabulary is not recognised. The sanctioned
+                # remedy is one line of contract data — the vocabulary is closed
+                # but configurable, and unknown VALUES still fail closed.
                 inherited = None
                 continue
             inherited = (severity_index, resolution_index, len(table.headers))
             located.append(
                 _FindingsTable(
-                    table=table, severity_index=severity_index, resolution_index=resolution_index
+                    table=table,
+                    severity_index=severity_index,
+                    resolution_index=resolution_index,
                 )
             )
             continue
@@ -291,10 +320,14 @@ def _findings_tables(artifact: str, config: dict) -> list[_FindingsTable]:
         if inherited is None:
             continue
         severity_index, resolution_index, width = inherited
+        # Positional: the severity must sit in the column the inherited header
+        # puts it in. "Any cell mentioning critical" swept in ordinary prose
+        # rows (`| this dependency is critical for phase 2 |`) and turned a
+        # clean report red — the cry-wolf failure this project treats as a
+        # security problem in its own right.
         carries_severity = any(
-            _severity_tokens(cell) & _BLOCKING_SEVERITIES
+            _is_severity_cell(row.cell(severity_index), _BLOCKING_SEVERITIES)
             for row in table.rows
-            for cell in row.cells
         )
         if table.rows and (len(table.rows[0].cells) == width or carries_severity):
             located.append(
@@ -330,6 +363,7 @@ class _ParsedBuildReport:
     table_errors: list[TableError]
     html_table_lines: list[int]
     matrix_present: bool
+    matrix_has_valid_rows: bool
     metrics_fence_present: bool
     # (section display name, heading line numbers) for every fixed-name section
     # located more than once — MD.duplicate_contract_section's input.
@@ -501,6 +535,7 @@ class BuildReportContract:
                     task_review_rows.append((task_id, verdict))
 
         matrix_present = bool(located["Traceability Matrix"])
+        matrix_has_valid_rows = False
         matrix_rows: list[_MatrixRow] = []
         if matrix_present:
             for table in parse_tables(
@@ -509,6 +544,8 @@ class BuildReportContract:
                 required_columns=self._required_cells("traceability_matrix"),
             ):
                 table_errors.extend(table.errors)
+                if table.rows and not table.errors:
+                    matrix_has_valid_rows = True
                 index = {
                     name: table.header_index(name)
                     for name in ("REQ", "Priority", "Tests", "Result")
@@ -578,6 +615,7 @@ class BuildReportContract:
             table_errors=table_errors,
             html_table_lines=html_table_lines,
             matrix_present=matrix_present,
+            matrix_has_valid_rows=matrix_has_valid_rows,
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
             duplicate_sections=duplicate_sections,
@@ -1146,15 +1184,16 @@ class BuildReportContract:
         if not parsed.matrix_present:
             return []
         findings: list[Finding] = []
-        if not parsed.matrix_rows:
+        if not parsed.matrix_rows or not parsed.matrix_has_valid_rows:
             findings.append(
                 Finding(
                     level=Level.FAIL,
                     rule="MD.matrix_empty",
                     field="Traceability Matrix",
                     message=(
-                        "the matrix section is present but carries no rows — an empty "
-                        "matrix is not evidence of zero requirements"
+                        "the matrix section is present but carries no well-formed rows "
+                        "— an empty or wholly malformed matrix is not evidence of zero "
+                        "requirements"
                     ),
                     expected="at least one row",
                     found="0 rows",

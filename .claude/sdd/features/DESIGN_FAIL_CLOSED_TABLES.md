@@ -10,7 +10,7 @@
 | **Date** | 2026-07-30 |
 | **Author** | design-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_FAIL_CLOSED_TABLES.md](DEFINE_FAIL_CLOSED_TABLES.md) |
-| **Status** | Ready for Build |
+| **Status** | ✅ Complete (Built) |
 | **Risk Level** | high (echo from DEFINE) |
 
 ---
@@ -85,7 +85,23 @@ Seven copies of `strip("|").split("|")` exist today; the escaped-pipe bug (AT-00
 
 `TableError` carries kind, section, line, expected/found counts and the raw line — no `Level`. Mapping to FAIL/WARN stays in the contracts, where severity has always been policy. This keeps the parser reusable by PR E/F without them inheriting build-phase policy.
 
-Gate D: all five ≥ 0.90 — no pauses. (Interactive run; threshold 0.80.)
+### Decision 6: Recognition of a HEADED table is by column vocabulary only `[ASSUMED 0.91]` *(fix-round 1)*
+
+Review found a headed table whose column names fall outside the vocabulary was dropped with no diagnostic — a real Critical, and a promise Decision 2 had made and the code had not kept. My first fix recognised such tables by CONTENT (a cell carrying a blocking severity). It reddened three legitimate constructs in a row: `## Issues Encountered` with "Critical" in its Issue cell, a decoy row reading "Critical thinking was applied", and `## Autonomous Decisions` with "Important" as a Decision Point. Narrowing it twice did not converge, and the reason is structural: **by content alone, a cell that simply IS the word "Important" in a decisions table is indistinguishable from a finding.**
+
+So recognition stays with the closed COLUMN vocabulary, extended with the sanctioned synonyms (`level`, `impact`, `criticality`; `state`, `result`) — which closes both of the review's concrete repros. **Disclosed residual (PR F):** a findings table whose column names fall entirely outside the vocabulary is not recognised; the sanctioned remedy is one line of contract data, and unknown VALUES still fail closed. Accepting that narrow, documented gap is preferable to a gate that reddens valid artifacts — which gets routed around, and is a security failure of its own.
+
+### Decision 7: An irreducible structural ambiguity is resolved toward VISIBILITY `[ASSUMED 0.92]` *(fix-round 2)*
+
+A two-line block `[line, all-dash line]` is structurally identical whether it is a header plus its delimiter or a data row followed by a dash row. Reading it as a header made the data line vanish completely — no row, no error — and that is how an unresolved Critical disappeared with nothing but a blank line above it (review finding 5, the simplest bypass found in this PR). The corpus was measured first: **zero** legitimate header-plus-delimiter-only blocks exist across every archived artifact and template, so the ambiguity is not a real authoring pattern.
+
+It resolves to "data" **unconditionally, for every caller** — no vocabulary, no per-surface configuration. The first attempt used caller-supplied hint words and was wired into one of six `parse_tables` call sites, leaving the identical Critical bypass live in the Traceability Matrix, Task Reviews, Task Execution, TDD Evidence and the design-side matrix (review finding 7). Threading a per-surface vocabulary through all six would have multiplied configuration AND worsened a substring false positive the vocabulary itself introduced (a header reading "Deemed Unimportant" contains "important"). Removing the vocabulary removes both problems: erring toward visibility can only add findings, and there is nothing left to match against.
+
+Consequence, accepted deliberately: a table that is nothing but a header and a delimiter is now read as data and reported. Measured first — that shape occurs **zero** times across every archived artifact and template — and §7.6's "a present matrix needs at least one valid row" survives, restated as "no well-formed rows".
+
+**Disclosed precision limitation (review finding 6, non-blocking):** a headerless fragment whose cells are REORDERED relative to the header it inherits is read positionally, so a `Critical` sitting in the resolution slot is not seen by `BR.open_blocking_finding`. The report still FAILs — the fragment always carries `MISSING_HEADER` → `MD.table_malformed` — but the finding names the wrong defect. Fixing it by scanning every cell reintroduces the prose false positive Decision 6 rejected, so it is recorded rather than traded for cry-wolf.
+
+Gate D: all seven ≥ 0.90 — no pauses. (Interactive run; threshold 0.80.)
 
 ---
 

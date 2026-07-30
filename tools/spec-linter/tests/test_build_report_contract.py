@@ -1622,3 +1622,79 @@ def test_no_hand_rolled_row_parsing_remains_in_the_contracts() -> None:
         source = (root / name).read_text()
         assert 'strip("|").split("|")' not in source, f"{name} still splits cells by hand"
         assert "_NUMBERED_ROW" not in source, f"{name} still has its own row regex"
+
+
+# --- round-1 review fixes (PR B) ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "| # | Level | Description | Location | State |",
+        "| # | Impact | Description | Location | Resolution |",
+        "| # | Criticality | Description | Location | Outcome |",
+    ],
+)
+def test_synonym_column_names_still_identify_a_findings_table(header: str) -> None:
+    """Review finding 1 (Critical): a findings table whose columns use a
+    sanctioned synonym must still be recognised — recognition is by the closed
+    COLUMN vocabulary, which is contract data and extensible by one line."""
+    block = _SEVER + f"{header}\n|---|---|---|---|---|\n| 1 | Critical | SQLi | db.py | OPEN |\n"
+    assert lint(_sever(block, moved=True), _real_contract()).level == Level.FAIL
+
+
+def test_prose_fragment_mentioning_critical_is_not_a_finding() -> None:
+    """Review finding 2: inheritance is POSITIONAL. A stray one-cell line that
+    merely contains the word is prose, not a severed findings row."""
+    report = _sever("\n\n| this dependency is critical for phase 2, tracked separately |")
+    assert "BR.open_blocking_finding" not in _rules(lint(report, _real_contract()))
+
+
+def test_decision_table_saying_important_is_not_a_finding() -> None:
+    """The cry-wolf guard that killed the content-based recognition attempt:
+    a legitimate table may simply CONTAIN a severity word."""
+    report = VALID_REPORT + (
+        "\n## Autonomous Decisions\n\n"
+        "| # | Decision Point | Options Considered | Chose | Rationale |\n"
+        "|---|----------------|--------------------|-------|-----------|\n"
+        "| 1 | Important | A vs B | A | deferred to a follow-up |\n"
+    )
+    assert "BR.open_blocking_finding" not in _rules(_lint(report))
+
+
+def test_a_dash_row_cannot_turn_a_finding_into_a_header() -> None:
+    """Review finding 5, end to end: the simplest bypass found in this PR —
+    a blank line plus a dash row, no boundary trick required."""
+    report = _sever("\n\n| 2 | Critical | SQL injection | db.py:42 |  |\n| - | - | - | - | - |")
+    verdict = lint(report, _real_contract())
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+# --- review finding 7: the ambiguity is closed at EVERY surface ---------------
+
+
+def test_dash_row_cannot_hide_an_uncovered_must_in_the_matrix() -> None:
+    report = VALID_REPORT + (
+        "\n## Traceability Matrix\n\n"
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |\n"
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|\n"
+        "| 1 | REQ-1 | MUST | TASK-A | tests/a.py | unit | Pass | clean |\n\n"
+        "| 2 | REQ-2 | MUST | TASK-B |  |  |  |  |\n"
+        "| - | - | - | - | - | - | - | - |\n"
+    )
+    rules = _rules(_lint_with_matrix(report))
+    assert "BR.must_uncovered" in rules
+    assert "MD.table_malformed" in rules
+
+
+def test_dash_row_cannot_hide_a_dirty_task_review() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2") + (
+        "\n## Task Reviews\n\n"
+        "| # | Task ID | Risk | Reviewer | Verdict |\n"
+        "|---|---------|------|----------|---------|\n"
+        "| 1 | TASK-1 | low | @r | clean |\n\n"
+        "| 2 | TASK-2 | low | @r | dirty |\n"
+        "| - | - | - | - | - |\n"
+    )
+    assert "BR.task_review_dirty" in _rules(_lint_with_task_review(report))
