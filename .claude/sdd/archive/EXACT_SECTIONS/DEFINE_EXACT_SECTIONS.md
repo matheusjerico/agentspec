@@ -9,7 +9,7 @@
 | **Feature** | EXACT_SECTIONS |
 | **Date** | 2026-07-30 |
 | **Author** | define-agent |
-| **Status** | ✅ Complete (Designed) |
+| **Status** | Shipped |
 | **Clarity Score** | 15/15 |
 
 **Source:** `docs/superpowers/specs/2026-07-29-agentspec-architecture-remediation-design.md` §6 (Remediação 1 — Critical), §4.2 (exact addressing principle), §15 PR A, §16 (blocks every other remediation). Phase 0 carried by the ratified spec. Baseline: post-LINTER_FAIL_CLOSED main (`f5292fc`).

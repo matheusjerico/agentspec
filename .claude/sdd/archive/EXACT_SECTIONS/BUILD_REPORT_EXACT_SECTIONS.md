@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_EXACT_SECTIONS.md](../features/DEFINE_EXACT_SECTIONS.md) |
 | **DESIGN** | [DESIGN_EXACT_SECTIONS.md](../features/DESIGN_EXACT_SECTIONS.md) |
-| **Status** | Complete |
+| **Status** | Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | required |
 | **Risk Level** | medium (echo from DEFINE) |

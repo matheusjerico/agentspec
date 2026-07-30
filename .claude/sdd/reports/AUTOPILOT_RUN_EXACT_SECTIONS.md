@@ -26,6 +26,13 @@
 | I | ignition | 1 | re-score 15/15 (P3/U3/G3/S3/Sc3); spec-lint --phase define exit 0; bypass independently reproduced on main (decoy -> PASS with open Critical) | PASS | 2026-07-30T04:30Z | - | - |
 | L | design | 1 | spec-lint --phase design exit 0 (TM + TX on manifest and matrix, 8/8 REQs) | PASS | 2026-07-30T04:40Z | - | - |
 | J | design | 1 | spec-judge crashed (AttributeError in judge.py, exit 1) — sensor unavailable, second consecutive run | SKIP:crash-exit1 | 2026-07-30T04:40Z | - | - |
+| R | build | 1 | code-reviewer: dirty — Critical (my boundary rule truncated on stray/fenced `#`) | FAIL | 2026-07-30T05:30Z | - | - |
+| R | build | 2 | dirty — Critical (any same-level heading truncated; HTML comments; fence run-length) | FAIL | 2026-07-30T06:10Z | - | - |
+| R | build | 3 | dirty — Critical (15 of 21 trusted boundaries unmonitored; moved-heading variant) | FAIL | 2026-07-30T06:50Z | - | - |
+| R | build | 4 | clean-with-minors — no addressing bypass remains; 1 FP fixed (width-scoped inheritance); residuals R-1..R-5 scoped to PR B | PASS | 2026-07-30T07:30Z | - | - |
+| L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (WARN: authorized fix-round override, v3.19.0) | PASS | 2026-07-30T07:40Z | - | - |
+| B | build | 1 | BUILD_REPORT complete; 183 root + 334 spec-linter; build + parity exit 0; 18/18 attack vectors blocked | PASS | 2026-07-30T07:40Z | - | - |
+| S | ship | 1 | pre-ship checklist: verdict clean-with-minors, 517/517 green, statuses Shipped; PR_READY generated | PASS | 2026-07-30T07:45Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -38,9 +45,9 @@
 | Phase | Artifact | Checkpoint Commit | Gate Summary |
 |-------|----------|-------------------|--------------|
 | Ignition | .claude/sdd/features/DEFINE_EXACT_SECTIONS.md | 377acac — ignition | I: re-score 15/15 |
-| Design | .claude/sdd/features/DESIGN_EXACT_SECTIONS.md | pending (this commit) | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (4 [ASSUMED] ≥ 0.90) |
-| Build | pending | - | - |
-| Ship | pending | - | - |
+| Design | .claude/sdd/archive/EXACT_SECTIONS/DESIGN_EXACT_SECTIONS.md | 6e98885 — design complete | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (4 [ASSUMED] ≥ 0.90) |
+| Build | .claude/sdd/archive/EXACT_SECTIONS/BUILD_REPORT_EXACT_SECTIONS.md | 072a1ef — build complete | R: clean-with-minors (4 rounds, authorized) · L: PASS · B: PASS |
+| Ship | .claude/sdd/archive/EXACT_SECTIONS/SHIPPED_2026-07-30.md | pending (this commit) | S: PASS · PR_READY generated |
 | PR | pending | - | - |
 
 ---
@@ -63,6 +70,7 @@
 | Gate J refinements | 1 per document | 0 | - |
 | Gate D pauses | un-capped (interactive) | 0 | - |
 | Build per-file retries | 3 per file | 0 | - |
+| Branch-review fix rounds | 2 (raised to 4 by the maintainer) | 4 | Authorized override recorded in the report and in v3.19.0 |
 | `--max-iterations` cap | default | 0 | L+J only — never Gate D |
 
 ---
@@ -105,7 +113,7 @@ N/A
 | **Phases Completed** | 0/5 (ignition · design · build · ship · PR) |
 | **Gates Evaluated** | 1 (1 PASS) |
 | **Total Regenerations** | 0 |
-| **Human Interactions** | 0 |
+| **Human Interactions** | 3 (scope of the bundled Codex commits; residuals → PR B; fix-round budget) |
 | **PR** | - |
 | **Manual Follow-up** | - |
 
