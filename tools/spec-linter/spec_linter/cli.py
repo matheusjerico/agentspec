@@ -309,6 +309,17 @@ def _build_report_contract(
             )
         matrix_must_coverage = True
 
+    table_config: dict[str, Any] | None = None
+    table_contract = data.get("table_contract")
+    if table_contract is not None:
+        if not isinstance(table_contract, dict):
+            raise _OperationalError(
+                f"table_contract must be a mapping in {contracts_file.name} — got "
+                f"{type(table_contract).__name__}; a present-but-invalid block fails "
+                f"closed instead of silently disarming its rules"
+            )
+        table_config = table_contract
+
     metrics_config: dict[str, Any] | None = None
     workflow_metrics = data.get("workflow_metrics")
     if isinstance(workflow_metrics, dict):
@@ -342,6 +353,7 @@ def _build_report_contract(
         fix_rounds_override=fix_rounds_override,
         matrix_must_coverage=matrix_must_coverage,
         metrics_config=metrics_config,
+        table_config=table_config,
     )
 
 

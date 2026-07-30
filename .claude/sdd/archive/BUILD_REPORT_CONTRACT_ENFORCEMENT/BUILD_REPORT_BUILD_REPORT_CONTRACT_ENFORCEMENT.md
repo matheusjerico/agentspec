@@ -149,7 +149,7 @@ plugin build:      ./build-plugin.sh                    → exit 0 (Step 0 tests
 | 5 | Minor | Unfilled `### Overall: {...}` placeholder silently skipped completeness check | build_report.py | fixed in round 1: placeholder → `BR.tasks_incomplete` FAIL |
 | 6 | Minor | `--legacy-mode` warn/fail names hardcoded to manual/autopilot context keys | cli.py | recorded (minor) — accepted per DESIGN Decision 3: the flag names the consumer context; contract owns severity |
 | 7 | Critical (round-1 re-review, C1) | Heading-level mismatch: `### Review Verdict` satisfied presence but emptied the scan scope | build_report.py | fixed in round 2 (working tree): single `##`-level heading vocabulary for presence AND scoping; demotion now `L2.required_section` FAIL |
-| 8 | Error (round-1 re-review, E1) | Prefix match accepted verb-prefixed hedges ("Fixed - actually not") | build_report.py | fixed in round 2 (working tree): template-shaped `_RESOLVED` pattern; parametrized regression test |
+| 8 | Important (round-1 re-review, E1) | Prefix match accepted verb-prefixed hedges ("Fixed - actually not") | build_report.py | fixed in round 2 (working tree): template-shaped `_RESOLVED` pattern; parametrized regression test |
 | 9 | Minor | Interposed benign `##` heading inside Review Verdict can still truncate the findings scan | build_report.py | recorded (minor) — known limitation: requires active structural deviation from the template; a deterministic linter cannot defeat a deliberately deceptive report author (they could omit the row entirely); documented here rather than hidden |
 
 ---

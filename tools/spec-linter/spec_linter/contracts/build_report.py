@@ -85,10 +85,12 @@ required section instead of an empty scan scope.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 import yaml
 
+from ..markdown import ParsedTable, TableError, TableErrorKind, parse_tables
 from ..sections import Section, content_lines, find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
@@ -98,9 +100,6 @@ from ..verdict import Finding, Level
 # what "the Review Verdict section" is. A demoted "### Review Verdict" is a
 # missing required section (fail-closed), never a silently-empty scan scope.
 _METADATA_ROW = re.compile(r"^\s*\|\s*\*\*([^*|]+)\*\*\s*\|\s*([^|]*)\|", re.MULTILINE)
-_NUMBERED_ROW = re.compile(r"^\|\s*\d+\s*\|.*$", re.MULTILINE)
-_TABLE_ROW = re.compile(r"^\|.*\|\s*$", re.MULTILINE)
-_SEPARATOR_ROW = re.compile(r"^\|[\s:|-]+\|\s*$")
 _OVERALL_LINE = re.compile(r"^###\s+Overall:.*$", re.MULTILINE)
 # Fail-closed: a blocking finding counts as resolved ONLY when its resolution
 # cell is template-shaped — "fixed in {sha}" / "resolved in {ref}". Anything
@@ -119,6 +118,29 @@ _FIX_ROUNDS_OVERRIDE = re.compile(
 )
 _INCOMPLETE_MARKERS = ("⏳", "🔄", "❌")
 _BLOCKING_SEVERITIES = {"critical", "important"}
+_NON_BLOCKING_SEVERITIES = {"minor", "info", "informational", "nit", "trivial"}
+_DEFAULT_SEVERITY_COLUMNS = {"severity", "sev"}
+_DEFAULT_RESOLUTION_COLUMNS = {"resolution", "status", "outcome", "fix", "disposition"}
+# Identifier columns per surface: emptiness and unfilled placeholders are
+# defects HERE, never in free-text cells. Module defaults so the guarantee does
+# not depend on a repo having adopted `table_contract`; the block overrides.
+# Sections whose tables ARE mandatory evidence: a structural defect in one of
+# them blocks. Elsewhere a pipe construct may legitimately be a label.
+_EVIDENCE_SECTIONS = (
+    "Traceability Matrix",
+    "Task Reviews",
+    "Task Execution with Agent Attribution",
+    "TDD Evidence",
+)
+_SURFACE_KEYS = {
+    "Traceability Matrix": "traceability_matrix",
+    "Task Reviews": "task_reviews",
+}
+_DEFAULT_REQUIRED_CELLS = {
+    "review_findings": {"severity"},
+    "traceability_matrix": {"req", "priority"},
+    "task_reviews": {"task id", "verdict"},
+}
 # A severity cell is read as WORDS, not as an exact string: `Critical (F1)`,
 # `**Critical**`, `🔴 Critical` and `critical/high` all mean Critical to the
 # human reading the report, and an exact-match predicate let every one of them
@@ -143,6 +165,7 @@ _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 # Estimate markers in MEASURED string values (never in `reason` prose):
 # a leading `~`, or any `approx`/`estimate(d)`/`estimation` token.
 _ESTIMATE_MARKER = re.compile(r"^\s*~|approx|estimat", re.IGNORECASE)
+_HTML_TABLE = re.compile(r"<table[\s>]", re.IGNORECASE)
 
 
 # The CLOSED boundary vocabulary: only a heading the contract RECOGNISES as a
@@ -195,101 +218,100 @@ _FIXED_SECTIONS: dict[str, frozenset[str]] = {
 }
 
 
-def _table_blocks(artifact: str) -> list[list[str]]:
-    """Contiguous runs of table lines that are LIVE structure — opaque regions
-    are excluded via the shared `content_lines` primitive, so a table quoted
-    inside a fence (an illustration of a bad row, say) is never read as one."""
-    blocks: list[list[str]] = []
-    current: list[str] = []
-    for _, line in content_lines(artifact):
-        if _TABLE_ROW.match(line):
-            current.append(line)
-            continue
-        if current:
-            blocks.append(current)
-        current = []
-    if current:
-        blocks.append(current)
-    return blocks
+def _severity_tokens(cell: str) -> set[str]:
+    """Word tokens of a severity cell, NFKC-normalised.
+
+    Decoration must not hide meaning: `Critical (F1)`, `**Critical**`,
+    `🔴 Critical` and `critical/high` all yield `critical`. NFKC folds
+    compatibility forms (fullwidth, ligatures); a HOMOGLYPH (Cyrillic `С`) is
+    not folded and simply fails to tokenise into a known word — which the
+    CLOSED vocabulary then reports as `invalid_identifier` rather than letting
+    it slip through as "not a match"."""
+    return set(_SEVERITY_WORD.findall(unicodedata.normalize("NFKC", cell.lower())))
 
 
-def _findings_tables(artifact: str) -> list[str]:
-    """Every FINDINGS table's data rows, located by the table's own header
-    signature (`Severity` AND `Resolution` columns) rather than by the section
-    it sits in.
+@dataclass(frozen=True, slots=True)
+class _FindingsTable:
+    """A findings table located by its own header vocabulary, plus the column
+    indices its rules read. Renaming `Resolution` to `Status` no longer makes
+    the table unrecognisable (R-1): both names are contract data."""
 
-    Section boundaries can be moved, duplicated, commented out or demoted, but
-    a findings table carries its identity in its header, so an unresolved
-    blocking row inside one is located wherever it sits.
+    table: ParsedTable
+    severity_index: int
+    resolution_index: int
 
-    A table split by intervening content (a blank line, a heading, a list) is
-    still ONE logical table: a fragment with no header of its own inherits the
-    nearest preceding header — but ONLY when its column count matches that
-    header's. Continuation of a table preserves its width; an unrelated
-    headerless table (an author who omitted a header two sections later) does
-    not, and must not be read as findings. That width check is what keeps the
-    severed-row bypass closed without crying wolf on a legitimate report.
 
-    Disclosed residuals (deferred to the structural table parser, spec §7 /
-    PR B — see docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md):
-    identification is still a SHAPE assumption. A severed table declaring its
-    OWN header with a renamed resolution column (`Status`), a row stripped of
-    its leading `#` cell, a raw HTML `<table>`, an unrecognised severity word,
-    and a severed row padded to a different column count are all invisible
-    here. Those are table-grammar problems, not addressing problems.
-    """
-    tables: list[str] = []
-    findings_columns: int | None = None
-    for block in _table_blocks(artifact):
-        cells = [cell.strip().lower() for cell in block[0].strip("|").split("|")]
-        if not _NUMBERED_ROW.match(block[0]):
-            # A block that carries its own header re-establishes identity.
-            findings_columns = (
-                len(cells) if "severity" in cells and "resolution" in cells else None
+def _findings_tables(artifact: str, config: dict) -> list[_FindingsTable]:
+    """Every findings table in the artifact, wherever it sits.
+
+    Identity comes from the table's own header — a severity column plus one of
+    the sanctioned resolution columns — so no section-boundary manipulation
+    (moving, duplicating, commenting out or demoting a heading) can hide the
+    rows inside it. Structural errors are reported by the parser itself; this
+    function only decides which tables the finding rules apply to."""
+    severity_names = {
+        name.lower() for name in config.get("severity_columns", ())
+    } or _DEFAULT_SEVERITY_COLUMNS
+    resolution_names = {
+        name.lower() for name in config.get("resolution_columns", ())
+    } or _DEFAULT_RESOLUTION_COLUMNS
+    located: list[_FindingsTable] = []
+    inherited: tuple[int, int, int] | None = None  # (severity, resolution, width)
+    required = {
+        name.lower() for name in config.get("required_cells", {}).get("review_findings", ())
+    } or _DEFAULT_REQUIRED_CELLS["review_findings"]
+    for table in parse_tables("Review Verdict", artifact, required_columns=required):
+        headerless = any(
+            error.kind is TableErrorKind.MISSING_HEADER for error in table.errors
+        )
+        if not headerless:
+            severity_index = next(
+                (i for i, h in enumerate(table.headers) if h.strip().lower() in severity_names),
+                None,
             )
-            if findings_columns is not None:
-                tables.append("\n".join(block[1:]))
+            resolution_index = next(
+                (i for i, h in enumerate(table.headers) if h.strip().lower() in resolution_names),
+                None,
+            )
+            if severity_index is None or resolution_index is None:
+                inherited = None
+                continue
+            inherited = (severity_index, resolution_index, len(table.headers))
+            located.append(
+                _FindingsTable(
+                    table=table, severity_index=severity_index, resolution_index=resolution_index
+                )
+            )
             continue
-        if findings_columns is not None and len(cells) == findings_columns:
-            tables.append("\n".join(block))
-    return tables
-
-
-def _table_data_rows(section: str) -> int:
-    rows = [m.group(0) for m in _TABLE_ROW.finditer(section)]
-    data_rows = [row for row in rows if not _SEPARATOR_ROW.match(row)]
-    return max(len(data_rows) - 1, 0)
+        # A fragment with no header of its own is a CONTINUATION of the nearest
+        # preceding findings table when its width matches — which is what
+        # parking a row after a boundary heading produces. Width scoping keeps
+        # an unrelated headerless table (an author who omitted a header two
+        # sections later) from inheriting "findings" identity.
+        if inherited is None:
+            continue
+        severity_index, resolution_index, width = inherited
+        carries_severity = any(
+            _severity_tokens(cell) & _BLOCKING_SEVERITIES
+            for row in table.rows
+            for cell in row.cells
+        )
+        if table.rows and (len(table.rows[0].cells) == width or carries_severity):
+            located.append(
+                _FindingsTable(
+                    table=table, severity_index=severity_index, resolution_index=resolution_index
+                )
+            )
+    return located
 
 
 @dataclass(frozen=True, slots=True)
 class _MatrixRow:
     req: str
     priority: str
+    tasks: str
     tests: str
     result: str
-
-
-def _parse_matrix_rows(section: str) -> tuple[list[_MatrixRow], list[str]]:
-    """Numbered rows of a filled `## Traceability Matrix` section —
-    build-side shape: `| # | REQ | Priority | Tasks | Tests | Verification
-    Type | Result | Review |`. Rows with fewer than 8 cells, or an unfilled
-    template placeholder (`{` in the REQ or Priority cell), are returned in
-    the second list and become `BR.matrix_row_malformed` FAIL findings —
-    fail-closed: a truncated MUST row must never evade the coverage rules."""
-    rows: list[_MatrixRow] = []
-    malformed: list[str] = []
-    for m in _NUMBERED_ROW.finditer(section):
-        raw = m.group(0).strip()
-        cells = [c.strip() for c in raw.strip("|").split("|")]
-        if len(cells) < 8 or "{" in cells[1] or "{" in cells[2]:
-            malformed.append(raw)
-            continue
-        rows.append(
-            _MatrixRow(
-                req=cells[1], priority=cells[2].lower(), tests=cells[4], result=cells[6].lower()
-            )
-        )
-    return rows, malformed
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,10 +325,10 @@ class _ParsedBuildReport:
     tdd_evidence_text: str
     task_ids_executed: set[str]
     task_review_rows: list[tuple[str, str]]
-    task_review_rows_malformed: list[str]
     task_reviews_section_present: bool
     matrix_rows: list[_MatrixRow]
-    matrix_rows_malformed: list[str]
+    table_errors: list[TableError]
+    html_table_lines: list[int]
     matrix_present: bool
     metrics_fence_present: bool
     # (section display name, heading line numbers) for every fixed-name section
@@ -332,6 +354,7 @@ class BuildReportContract:
         fix_rounds_override: dict | None = None,
         matrix_must_coverage: bool = False,
         metrics_config: dict | None = None,
+        table_config: dict | None = None,
     ) -> None:
         self.name = "sdd-phase:build"
         self._required = required_sections
@@ -356,6 +379,9 @@ class BuildReportContract:
         # {"schema_version": int, "catalog": list[str]} arms the five
         # BR.metrics_* rules; `None` (default) leaves them all off.
         self._metrics_config = metrics_config
+        # Opt-in from the top-level `table_contract` block: closed vocabularies
+        # for severity words and column names. `None` keeps the prior posture.
+        self._table_config = table_config
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
         headings = heading_slugs(artifact)
@@ -398,70 +424,116 @@ class BuildReportContract:
         def union(name: str) -> str:
             return "\n".join(section.body for section in located[name])
 
-        blocking_open = self._blocking_open(union("Review Verdict"))
-        # Safety net that makes the whole bypass CLASS structurally dead: the
-        # same scan over the ENTIRE artifact. Scope games — a recognised
-        # boundary heading moved or duplicated inside the section, an opaque
-        # region, a demoted heading — can shrink a section body, but none of
-        # them can remove the row from the document. An unresolved blocking row
-        # is therefore reported wherever it sits; the only way to make it
-        # disappear is to delete it, which is a visible edit, not a hiding
-        # place. The net is anchored on the FINDINGS TABLE's own header
-        # (Severity + Resolution columns), not on every numbered row, so a
-        # free-text table that merely says "Important" in some column is never
-        # mistaken for a finding — fail-closed without crying wolf.
-        for table in _findings_tables(artifact):
-            for entry in self._blocking_open(table):
+        # Findings live in FINDINGS TABLES, wherever those sit. Identity comes
+        # from the table's own header vocabulary, so no section-boundary game —
+        # moving, duplicating, commenting out or demoting a heading — can hide
+        # a row, and the parser guarantees no row is silently dropped on the way.
+        # Errors from EVERY table in the artifact, not only from the ones the
+        # finding rules recognised. Collecting them selectively was itself a
+        # filter — the exact behaviour this increment removes — and it let a
+        # severed fragment whose width did not match its header escape with no
+        # diagnostic at all (residual R-5 from the PR A handoff).
+        # Errors are collected from MANDATORY-EVIDENCE surfaces and from every
+        # findings table wherever it sits — not from every pipe construct in
+        # the document. A delimiter-less one-liner like
+        # `| **Tasks Completed** | 2/2 |` is a label the templates use on
+        # purpose; calling it a malformed table is the cry-wolf failure that
+        # gets a gate routed around. Scoping the CONSUMER is legitimate; the
+        # parser still never discards, so nothing is invisible — it is the
+        # contract that decides which structures are evidence.
+        table_errors: list[TableError] = []
+        for name in _EVIDENCE_SECTIONS:
+            for table in parse_tables(name, union(name), required_columns=self._required_cells(_SURFACE_KEYS.get(name, ""))):
+                table_errors.extend(table.errors)
+        blocking_open: list[str] = []
+        for located_table in _findings_tables(artifact, self._table_config or {}):
+            table_errors.extend(located_table.table.errors)
+            for entry in self._blocking_rows(located_table):
                 if entry not in blocking_open:
                     blocking_open.append(entry)
 
-        task_section = union("Task Execution with Agent Attribution")
-        task_rows_incomplete = sum(
-            1
-            for m in _NUMBERED_ROW.finditer(task_section)
-            if any(marker in m.group(0) for marker in _INCOMPLETE_MARKERS)
+        task_tables = parse_tables(
+            "Task Execution with Agent Attribution",
+            union("Task Execution with Agent Attribution"),
         )
+        task_rows = [row for table in task_tables for row in table.rows]
+        for table in task_tables:
+            table_errors.extend(table.errors)
+        task_rows_incomplete = sum(
+            1 for row in task_rows if any(marker in row.raw for marker in _INCOMPLETE_MARKERS)
+        )
+
+        html_table_lines = [
+            number for number, text in content_lines(artifact) if _HTML_TABLE.search(text)
+        ]
 
         overall_match = _OVERALL_LINE.search(artifact)
         overall_line = overall_match.group(0).strip() if overall_match else None
 
         tdd_section = union("TDD Evidence")
-        # Counted PER matched section and summed: each copy carries its own
-        # header row, so counting the joined string would subtract only one.
-        tdd_evidence_rows = sum(
-            _table_data_rows(section.body) for section in located["TDD Evidence"]
-        )
+        tdd_tables = parse_tables("TDD Evidence", tdd_section)
+        tdd_evidence_rows = sum(len(table.rows) for table in tdd_tables)
         tdd_evidence_text = tdd_section
 
         task_ids_executed: set[str] = set()
-        for m in _NUMBERED_ROW.finditer(task_section):
-            cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-            if len(cells) < 2:
-                continue
-            task_id = cells[1]
+        for row in task_rows:
+            task_id = row.cell(1)
             if task_id in ("", "-") or "{" in task_id:
                 continue
             task_ids_executed.add(task_id)
 
         task_reviews_section_present = bool(located["Task Reviews"])
         task_review_rows: list[tuple[str, str]] = []
-        task_review_rows_malformed: list[str] = []
         if task_reviews_section_present:
-            for m in _NUMBERED_ROW.finditer(union("Task Reviews")):
-                raw = m.group(0).strip()
-                cells = [c.strip() for c in raw.strip("|").split("|")]
-                # Fail-closed: a truncated or placeholder-bearing row becomes
-                # a BR.task_review_row_malformed FAIL — never a silent drop
-                # that could hide a dirty verdict at a severity-gated risk.
-                if len(cells) < 5 or "{" in cells[1] or "{" in cells[4]:
-                    task_review_rows_malformed.append(raw)
-                    continue
-                task_review_rows.append((cells[1], cells[4].lower()))
+            for table in parse_tables(
+                "Task Reviews",
+                union("Task Reviews"),
+                required_columns=self._required_cells("task_reviews"),
+            ):
+                table_errors.extend(table.errors)
+                verdict_index = table.header_index("Verdict")
+                task_index = table.header_index("Task ID")
+                for row in table.rows:
+                    task_id = row.cell(task_index if task_index is not None else 1)
+                    verdict = row.cell(verdict_index if verdict_index is not None else 4).lower()
+                    if "{" in task_id or "{" in verdict:
+                        continue  # the parser already reported it as a placeholder
+                    task_review_rows.append((task_id, verdict))
 
         matrix_present = bool(located["Traceability Matrix"])
-        matrix_rows, matrix_rows_malformed = (
-            _parse_matrix_rows(union("Traceability Matrix")) if matrix_present else ([], [])
-        )
+        matrix_rows: list[_MatrixRow] = []
+        if matrix_present:
+            for table in parse_tables(
+                "Traceability Matrix",
+                union("Traceability Matrix"),
+                required_columns=self._required_cells("traceability_matrix"),
+            ):
+                table_errors.extend(table.errors)
+                index = {
+                    name: table.header_index(name)
+                    for name in ("REQ", "Priority", "Tests", "Result")
+                }
+                for row in table.rows:
+                    req = row.cell(index["REQ"] if index["REQ"] is not None else 1)
+                    if "{" in req:
+                        continue  # reported by the parser as a placeholder
+                    matrix_rows.append(
+                        _MatrixRow(
+                            req=req,
+                            tasks=row.cell(
+                                table.header_index("Tasks")
+                                if table.header_index("Tasks") is not None
+                                else 3
+                            ),
+                            priority=row.cell(
+                                index["Priority"] if index["Priority"] is not None else 2
+                            ).lower(),
+                            tests=row.cell(index["Tests"] if index["Tests"] is not None else 4),
+                            result=row.cell(
+                                index["Result"] if index["Result"] is not None else 6
+                            ).lower(),
+                        )
+                    )
 
         # First fence of the FIRST matching section decides (the task-manifest
         # precedent); a workflow_metrics fence under any OTHER heading is
@@ -481,6 +553,16 @@ class BuildReportContract:
             if isinstance(root, dict):
                 metrics_block = root
 
+        seen_errors: set[tuple[str, int, str]] = set()
+        deduped: list[TableError] = []
+        for error in table_errors:
+            key = (error.kind.value, error.line, error.detail)
+            if key in seen_errors:
+                continue
+            seen_errors.add(key)
+            deduped.append(error)
+        table_errors = deduped
+
         return _ParsedBuildReport(
             headings=headings,
             metadata=metadata,
@@ -491,32 +573,59 @@ class BuildReportContract:
             tdd_evidence_text=tdd_evidence_text,
             task_ids_executed=task_ids_executed,
             task_review_rows=task_review_rows,
-            task_review_rows_malformed=task_review_rows_malformed,
             task_reviews_section_present=task_reviews_section_present,
             matrix_rows=matrix_rows,
-            matrix_rows_malformed=matrix_rows_malformed,
+            table_errors=table_errors,
+            html_table_lines=html_table_lines,
             matrix_present=matrix_present,
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
             duplicate_sections=duplicate_sections,
         )
 
-    @staticmethod
-    def _blocking_open(review_verdict_section: str) -> list[str]:
-        """Unresolved Critical/Important rows of the Review Verdict findings
-        table only — other numbered tables (tasks, autonomous decisions) never
-        feed this rule."""
+    def _required_cells(self, surface: str) -> set[str] | None:
+        """Columns the contract declares mandatory for a surface — the parser
+        checks emptiness and placeholders only there, because free-text cells
+        legitimately quote braces and legitimately go blank."""
+        names = (self._table_config or {}).get("required_cells", {}).get(surface, ())
+        return {name.lower() for name in names} or _DEFAULT_REQUIRED_CELLS.get(surface)
+
+    def _blocking_rows(self, located: _FindingsTable) -> list[str]:
+        """Unresolved blocking rows of one findings table.
+
+        Severity and resolution are read by COLUMN, not by position, so a table
+        that renames or reorders its columns is still understood. The severity
+        vocabulary is closed: an unrecognised word is not "no match" but an
+        `invalid_identifier`, surfaced through the blocking list so it fails
+        closed exactly like an unresolved Critical."""
+        # The vocabulary has module defaults so blocking detection keeps working
+        # without the opt-in block; `table_contract` only OVERRIDES it. What the
+        # block actually arms is the MD.* structural rules below.
+        vocabulary = (self._table_config or {}).get("severity_vocabulary", {})
+        blocking = {word.lower() for word in vocabulary.get("blocking", [])} or _BLOCKING_SEVERITIES
+        non_blocking = {
+            word.lower() for word in vocabulary.get("non_blocking", [])
+        } or _NON_BLOCKING_SEVERITIES
         entries: list[str] = []
-        for m in _NUMBERED_ROW.finditer(review_verdict_section):
-            cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-            if len(cells) < 4 or not (
-                _BLOCKING_SEVERITIES & set(_SEVERITY_WORD.findall(cells[1].lower()))
-            ):
+        for row in located.table.rows:
+            severity_cell = row.cell(located.severity_index)
+            tokens = _severity_tokens(severity_cell)
+            if not severity_cell:
+                continue  # empty severity is an empty_required_cell, reported by the parser
+            if not (tokens & blocking):
+                if tokens & non_blocking:
+                    continue
+                entries.append(
+                    f"line {row.line}: unrecognised severity {severity_cell!r} — the "
+                    "severity vocabulary is closed, so an unknown word blocks"
+                )
                 continue
-            if _RESOLVED.match(cells[-1]):
+            resolution = row.cell(located.resolution_index)
+            if _RESOLVED.match(resolution):
                 continue
-            resolution = cells[-1] or "empty"
-            entries.append(f"{cells[1]}: {cells[2]} ({cells[3]}) — resolution: {resolution}")
+            entries.append(
+                f"line {row.line}: {severity_cell} — resolution: {resolution or 'empty'}"
+            )
         return entries
 
     def check(self, parsed: _ParsedBuildReport) -> list[Finding]:
@@ -535,12 +644,14 @@ class BuildReportContract:
             findings.extend(self._check_tdd_required_by_risk(parsed))
         if self._tdd_exception_categories is not None:
             findings.extend(self._check_tdd_exception_invalid(parsed))
+        findings.extend(self._check_table_errors(parsed))
+        findings.extend(self._check_html_tables(parsed))
+        if self._matrix_must_coverage:
+            findings.extend(self._check_matrix_identifiers(parsed))
         if self._task_review_verdicts is not None:
-            findings.extend(self._check_task_review_row_malformed(parsed))
             findings.extend(self._check_task_review_missing(parsed))
             findings.extend(self._check_task_review_dirty(parsed))
         if self._matrix_must_coverage:
-            findings.extend(self._check_matrix_row_malformed(parsed))
             findings.extend(self._check_matrix_must_uncovered(parsed))
             findings.extend(self._check_matrix_missing(parsed))
         if self._metrics_config is not None:
@@ -997,48 +1108,97 @@ class BuildReportContract:
             )
         ]
 
-    def _check_task_review_row_malformed(self, parsed: _ParsedBuildReport) -> list[Finding]:
-        """Fail-closed row grammar (Codex review finding 3): every numbered
-        Task Reviews row with <5 cells or an unfilled placeholder in
-        Task ID/Verdict is a FAIL at ANY risk level — the risk-severity gate
-        scopes `task_review_missing`, never malformation."""
+    def _check_table_errors(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """`MD.table_malformed` — every structural defect the parser found in
+        mandatory evidence, one finding each, naming section and line (§7.9).
+
+        This single rule replaces the per-surface "row malformed" rules: with a
+        parser that never discards, malformation is uniform data rather than a
+        special case each consumer had to remember to check. Always-on, like
+        `MD.duplicate_contract_section`: a malformed table in mandatory evidence
+        is a structural defect no matter which optional families a repo armed —
+        making it opt-in would REGRESS repos that armed traceability or
+        task_review under the previous per-surface rules."""
         return [
             Finding(
                 level=Level.FAIL,
-                rule="BR.task_review_row_malformed",
-                field="Task Reviews",
-                message=(
-                    "numbered row is truncated (<5 cells) or carries an unfilled "
-                    "placeholder in Task ID/Verdict — a malformed row is a FAIL, "
-                    "never a silent drop that could hide a dirty verdict"
+                rule="MD.table_malformed",
+                field=error.section,
+                message=error.render(),
+                expected=(
+                    f"{error.expected_cells} cells"
+                    if error.expected_cells is not None
+                    else "a well-formed table row"
                 ),
-                expected="| # | Task ID | Risk | Reviewer | Verdict |",
-                found=raw,
+                found=error.raw.strip(),
             )
-            for raw in parsed.task_review_rows_malformed
+            for error in parsed.table_errors
         ]
 
-    def _check_matrix_row_malformed(self, parsed: _ParsedBuildReport) -> list[Finding]:
-        """Fail-closed row grammar (Codex review finding 2): every numbered
-        Traceability Matrix row with <8 cells or an unfilled placeholder in
-        REQ/Priority is a FAIL at ANY risk level — a truncated MUST row must
-        never vanish from `BR.must_uncovered`'s input."""
+    def _check_matrix_identifiers(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """§7.6 within-artifact matrix rules: a present matrix carries at least
+        one row and REQ-IDs are unique.
+
+        §7.6 rule 4 ("a referenced task id exists in the v2 manifest") is
+        deliberately NOT here: the manifest lives in the DESIGN, so the check
+        is cross-artifact and belongs to §12 / PR E, which this increment's
+        DEFINE scopes out explicitly."""
+        if not parsed.matrix_present:
+            return []
+        findings: list[Finding] = []
+        if not parsed.matrix_rows:
+            findings.append(
+                Finding(
+                    level=Level.FAIL,
+                    rule="MD.matrix_empty",
+                    field="Traceability Matrix",
+                    message=(
+                        "the matrix section is present but carries no rows — an empty "
+                        "matrix is not evidence of zero requirements"
+                    ),
+                    expected="at least one row",
+                    found="0 rows",
+                )
+            )
+        seen: set[str] = set()
+        for row in parsed.matrix_rows:
+            key = row.req.strip().lower()
+            if not key:
+                continue
+            if key in seen:
+                findings.append(
+                    Finding(
+                        level=Level.FAIL,
+                        rule="MD.duplicate_identifier",
+                        field="Traceability Matrix",
+                        message=f"REQ id {row.req!r} appears more than once",
+                        expected="each REQ id exactly once",
+                        found=row.req,
+                    )
+                )
+            seen.add(key)
+        return findings
+
+    def _check_html_tables(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """`MD.html_table_forbidden` — a raw `<table>` renders fine on GitHub
+        and is invisible to every pipe-syntax rule, so it is rejected outright
+        rather than parsed (§4.1: a second grammar would mean a second set of
+        shape assumptions)."""
+        if self._table_config is None or not parsed.html_table_lines:
+            return []
         return [
             Finding(
                 level=Level.FAIL,
-                rule="BR.matrix_row_malformed",
-                field="Traceability Matrix",
+                rule="MD.html_table_forbidden",
+                field="Markdown",
                 message=(
-                    "numbered row is truncated (<8 cells) or carries an unfilled "
-                    "placeholder in REQ/Priority — a malformed row is a FAIL, "
-                    "never a silent drop that hides a MUST from coverage"
+                    f"raw HTML table at line {line} — contract artifacts use pipe "
+                    "tables; HTML is invisible to every table rule"
                 ),
-                expected=(
-                    "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |"
-                ),
-                found=raw,
+                expected="a Markdown pipe table",
+                found="<table>",
             )
-            for raw in parsed.matrix_rows_malformed
+            for line in parsed.html_table_lines
         ]
 
     def _check_metrics(self, parsed: _ParsedBuildReport) -> list[Finding]:
