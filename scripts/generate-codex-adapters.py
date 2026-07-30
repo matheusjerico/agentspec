@@ -184,19 +184,43 @@ def find_drift(repo_root: Path, expected: dict[str, str]) -> list[str]:
     return drift
 
 
-def write_adapters(repo_root: Path, expected: dict[str, str]) -> None:
+def preserved_entries(repo_root: Path, expected: dict[str, str]) -> list[str]:
+    """Return top-level entries under the output root the generator does not own."""
+    output_root = repo_root / ".agents" / "skills"
+    if output_root.is_symlink() or not output_root.is_dir():
+        return []
+    generated = {Path(relative).parts[0] for relative in expected}
+    return sorted(
+        entry.name for entry in output_root.iterdir() if entry.name not in generated
+    )
+
+
+def write_adapters(
+    repo_root: Path, expected: dict[str, str], preserve_unknown: bool = False
+) -> None:
     """Replace the generated skills tree only after all output is validated."""
     agents_root = repo_root / ".agents"
     agents_root.mkdir(parents=True, exist_ok=True)
+    output_root = agents_root / "skills"
     temporary = Path(tempfile.mkdtemp(prefix="skills.", dir=agents_root))
     try:
+        if preserve_unknown:
+            for name in preserved_entries(repo_root, expected):
+                source = output_root / name
+                destination = temporary / name
+                if source.is_dir() and not source.is_symlink():
+                    shutil.copytree(source, destination, symlinks=True)
+                else:
+                    shutil.copy2(source, destination, follow_symlinks=False)
+
         for relative_path, content in expected.items():
             destination = temporary / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(content, encoding="utf-8")
 
-        output_root = agents_root / "skills"
-        if output_root.exists():
+        if output_root.is_symlink() or output_root.is_file():
+            output_root.unlink()
+        elif output_root.exists():
             shutil.rmtree(output_root)
         temporary.replace(output_root)
     except Exception:
@@ -223,6 +247,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="comma-separated command directories to include (default: all)",
     )
+    parser.add_argument(
+        "--preserve-unknown",
+        action="store_true",
+        help="keep entries under .agents/skills/ the generator did not produce",
+    )
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="report what would be generated without writing",
+    )
     args = parser.parse_args(argv)
     repo_root = args.root if args.root is not None else Path(__file__).resolve().parent.parent
     repo_root = repo_root.resolve()
@@ -248,8 +282,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Codex adapters are current ({len(expected)} files).")
             return 0
 
-        write_adapters(repo_root, expected)
-        print(f"Generated {len(expected)} Codex adapters in .agents/skills/.")
+        preserved = (
+            preserved_entries(repo_root, expected) if args.preserve_unknown else []
+        )
+        if args.plan:
+            print(f"would generate {len(expected)} adapters")
+        else:
+            write_adapters(repo_root, expected, args.preserve_unknown)
+            print(f"generated {len(expected)} adapters")
+        if preserved:
+            print(f"preserved: {' '.join(preserved)}")
         return 0
     except GenerationError as error:
         print(f"error: {error}", file=sys.stderr)
