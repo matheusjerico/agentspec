@@ -13,7 +13,7 @@
 | **DEFINE (input)** | .claude/sdd/features/DEFINE_FAIL_CLOSED_TABLES.md |
 | **Flags** | none |
 | **Branch** | feat/auto-fail-closed-tables |
-| **Status** | 🔄 In Progress |
+| **Status** | ✅ Success (PR: https://github.com/matheusjerico/agentspec/pull/16) |
 
 ---
 
@@ -47,8 +47,8 @@
 | Ignition | .claude/sdd/features/DEFINE_FAIL_CLOSED_TABLES.md | 0cde200 — ignition | I: re-score 15/15 |
 | Design | .claude/sdd/archive/FAIL_CLOSED_TABLES/DESIGN_FAIL_CLOSED_TABLES.md | 331fa39 — design complete | L: PASS · J: REFINE (1 of 4 adopted) · D: 0 pauses (5 [ASSUMED] ≥ 0.90) |
 | Build | .claude/sdd/archive/FAIL_CLOSED_TABLES/BUILD_REPORT_FAIL_CLOSED_TABLES.md | 7671bbd — build complete | R: clean-with-minors (3 rounds, authorized) · L: PASS · B: PASS |
-| Ship | .claude/sdd/archive/FAIL_CLOSED_TABLES/SHIPPED_2026-07-30.md | pending (this commit) | S: PASS |
-| PR | pending | - | - |
+| Ship | .claude/sdd/archive/FAIL_CLOSED_TABLES/SHIPPED_2026-07-30.md | shipped | S: PASS |
+| PR | https://github.com/matheusjerico/agentspec/pull/16 | this commit — close run | PR: PASS |
 
 ---
 
@@ -99,7 +99,7 @@ N/A
 
 | Tier | Target | Result |
 |------|--------|--------|
-| Terminal summary | stdout | pending |
+| Terminal summary | stdout | delivered |
 | OS notification | n/a (interactive entrypoint) | - |
 | Webhook | not configured | - |
 
@@ -109,12 +109,12 @@ N/A
 
 | Metric | Value |
 |--------|-------|
-| **Terminal Status** | 🔄 In Progress |
-| **Phases Completed** | 0/5 (ignition · design · build · ship · PR) |
-| **Gates Evaluated** | 1 (1 PASS) |
+| **Terminal Status** | ✅ Success |
+| **Phases Completed** | 5/5 (ignition · design · build · ship · PR) |
+| **Gates Evaluated** | 11 (7 PASS, 3 FAIL→fixed, 1 REFINE) |
 | **Total Regenerations** | 0 |
 | **Human Interactions** | 0 |
-| **PR** | - |
+| **PR** | https://github.com/matheusjerico/agentspec/pull/16 |
 | **Manual Follow-up** | - |
 
 ---
