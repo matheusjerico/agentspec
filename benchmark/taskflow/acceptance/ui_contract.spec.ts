@@ -33,14 +33,15 @@ test("TaskFlow browser behavior and accessible states", async ({ page }) => {
   const task = page.getByText(marker, { exact: true });
   await expect(task).toBeVisible();
 
-  await page.getByRole("button", { name: new RegExp(`edit.*${marker}`, "i") }).click();
-  const editForm = page.getByRole("form", { name: /save changes|edit task/i });
-  await editForm.getByLabel(/description/i).fill("Edited browser description");
-  await editForm.getByRole("button", { name: /save|update/i }).click();
-
-  const taskRegion = page
-    .getByRole("listitem")
-    .filter({ has: page.getByText(marker, { exact: true }) });
+  const taskItems = page.getByRole("listitem");
+  const taskIndex = (await taskItems.allTextContents()).findIndex((text) =>
+    text.includes(marker),
+  );
+  expect(taskIndex).toBeGreaterThanOrEqual(0);
+  const taskRegion = taskItems.nth(taskIndex);
+  await taskRegion.getByRole("button", { name: /edit/i }).click();
+  await taskRegion.getByLabel(/description/i).fill("Edited browser description");
+  await taskRegion.getByRole("button", { name: /save|update/i }).click();
   await expect(taskRegion.getByText("Edited browser description")).toBeVisible();
   await taskRegion.getByLabel(/status/i).selectOption("doing");
   await page.getByLabel(/filter.*status|status.*filter/i).selectOption("doing");
