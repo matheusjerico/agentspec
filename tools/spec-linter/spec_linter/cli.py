@@ -241,6 +241,13 @@ def _build_report_contract(
             f"level in {contracts_file.name}"
         ) from exc
 
+    fix_rounds_override = final_review.get("fix_rounds_override")
+    if fix_rounds_override is not None and not isinstance(fix_rounds_override, dict):
+        raise _OperationalError(
+            f"build.execution.final_review.fix_rounds_override must be a mapping "
+            f"in {contracts_file.name}"
+        )
+
     risk_tdd_policy: dict[str, str] | None = None
     tdd_exception_categories: list[str] | None = None
     tdd_policy = data.get("tdd_policy")
@@ -332,6 +339,7 @@ def _build_report_contract(
         risk_tdd_policy=risk_tdd_policy,
         tdd_exception_categories=tdd_exception_categories,
         task_review_verdicts=task_review_verdicts,
+        fix_rounds_override=fix_rounds_override,
         matrix_must_coverage=matrix_must_coverage,
         metrics_config=metrics_config,
     )

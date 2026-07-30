@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.18.0
+# Version: 3.19.0
 # Date: 2026-07-29
 
-version: "3.18.0"
+version: "3.19.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -715,6 +715,17 @@ build:
       blocking: "critical|important unresolved -> dirty"
       missing_verdict: "reviewer dispatch failed after retry -> missing; blocks ship (fails closed)"
       fix_loop_budget: 2
+      # Exceeding the budget must be a HUMAN decision recorded in the artifact —
+      # never a silent overrun, and never a quiet edit of the policy itself.
+      # Same shape as the risk_profile override: attributed and justified.
+      # Declared in the report's metadata row:
+      #   | **Fix rounds used** | 4/2 (override: author=<who>, rationale=<why>) |
+      # Effect: used > budget becomes a visible WARN (BR.fix_rounds_override)
+      # instead of FAIL. The budget itself never changes; a diverging declared
+      # budget and an override missing its rationale both still FAIL.
+      fix_rounds_override:
+        requires: [author, rationale]
+        grammar: "(override: author=<name>, rationale=<why>)"
       tdd_flag: "--tdd — opt-in RED-GREEN per code task, evidence in BUILD_REPORT"
 
   # Document-level phase contract for BUILD_REPORT_{FEATURE}.md — consumed by
@@ -1076,6 +1087,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.19.0"
+    date: "2026-07-30"
+    changes:
+      - "EXACT_SECTIONS follow-on: authorized fix-round override. build.execution.final_review gains fix_rounds_override (requires author + rationale). A report may declare `4/2 (override: author=<who>, rationale=<why>)`: exceeding the budget then becomes a visible WARN (BR.fix_rounds_override) instead of FAIL, keeping the overrun attributed and auditable. Opt-in — absent block keeps the strict behaviour; a diverging declared budget and an override missing its rationale both still FAIL. Added because a run that legitimately needed four review rounds (a live Critical still open at round 2) could otherwise only produce a report that fails its own gate, tempting either a false declaration or a quiet loosening of fix_loop_budget for everyone."
+
   - version: "3.18.0"
     date: "2026-07-30"
     changes:

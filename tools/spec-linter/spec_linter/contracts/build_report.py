@@ -89,7 +89,7 @@ from dataclasses import dataclass
 
 import yaml
 
-from ..sections import find_sections, heading_slugs, slug
+from ..sections import Section, content_lines, find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
 # Section presence and section scoping both bind on exactly ##-level headings
@@ -108,8 +108,27 @@ _OVERALL_LINE = re.compile(r"^###\s+Overall:.*$", re.MULTILINE)
 # and verb-prefixed hedges ("fixed? no", "Fixed - actually not").
 _RESOLVED = re.compile(r"^(?:fixed|resolved)\s+in\s+\S+", re.IGNORECASE)
 _FRACTION = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
+# `used/budget` optionally followed by an AUTHORIZED override clause. The
+# budget exists to stop thrashing, so exceeding it must be a human decision
+# recorded in the artifact — never a silent overrun, and never a quiet edit of
+# the policy itself. Mirrors the risk_profile override precedent.
+_FRACTION_WITH_OVERRIDE = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*(\(.*\))?\s*$")
+_FIX_ROUNDS_OVERRIDE = re.compile(
+    r"\(override:\s*author\s*=\s*([^,]+?)\s*,\s*rationale\s*=\s*([^)]+?)\s*\)",
+    re.IGNORECASE,
+)
 _INCOMPLETE_MARKERS = ("⏳", "🔄", "❌")
 _BLOCKING_SEVERITIES = {"critical", "important"}
+# A severity cell is read as WORDS, not as an exact string: `Critical (F1)`,
+# `**Critical**`, `🔴 Critical` and `critical/high` all mean Critical to the
+# human reading the report, and an exact-match predicate let every one of them
+# evade the blocking rule — the same "trusted matcher narrower than the
+# human-readable meaning" failure this feature exists to eliminate. Disclosed
+# residual (spec §7 / PR B): an UNRECOGNISED severity word (`Blocker`, a typo,
+# a unicode lookalike) still evades; the fail-closed answer is "unknown
+# severity in a findings table blocks", which is a closed-vocabulary policy
+# addition PR B owns.
+_SEVERITY_WORD = re.compile(r"[a-z]+")
 # Anchored to a table-cell boundary (start-of-line or '|'), optionally prefixed
 # by the template's "n/a —": a cell DECLARING an exception matches, while
 # incidental "exception:" text buried mid-sentence in a RED/GREEN excerpt
@@ -126,6 +145,39 @@ _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 _ESTIMATE_MARKER = re.compile(r"^\s*~|approx|estimat", re.IGNORECASE)
 
 
+# The CLOSED boundary vocabulary: only a heading the contract RECOGNISES as a
+# BUILD_REPORT section may end another section's body. Without this, any
+# same-level heading truncates a scan scope — a plain `## Notes` parked above an
+# unresolved Critical row was enough to hide it (reproduced), and no amount of
+# opaque-region handling can fix that, because the attack needs no trickery.
+# Kept in sync with BUILD_REPORT_TEMPLATE.md by a test; a section the template
+# grows is simply added here.
+_BOUNDARY_SLUGS: frozenset[str] = frozenset(
+    {
+        "metadata",
+        "summary",
+        "task_execution_with_agent_attribution",
+        "traceability_matrix",
+        "agent_contributions",
+        "task_reviews",
+        "files_created",
+        "verification_results",
+        "review_verdict",
+        "tdd_evidence",
+        "tdd_evidence_required_when_tdd_mode_off",
+        "issues_encountered",
+        "autonomous_decisions",
+        "deviations_from_design",
+        "blockers_if_any",
+        "acceptance_test_verification",
+        "performance_notes",
+        "workflow_metrics",
+        "data_quality_results_if_applicable",
+        "final_status",
+        "next_step",
+    }
+)
+
 # Every fixed-name section this contract reads, mapped to its CLOSED set of
 # sanctioned exact slugs. Prefix matching is gone (spec §6.4 items 1–2): a
 # heading either has one of these exact addresses or it is not the section.
@@ -141,6 +193,66 @@ _FIXED_SECTIONS: dict[str, frozenset[str]] = {
     "Traceability Matrix": frozenset({"traceability_matrix"}),
     "Workflow Metrics": frozenset({"workflow_metrics"}),
 }
+
+
+def _table_blocks(artifact: str) -> list[list[str]]:
+    """Contiguous runs of table lines that are LIVE structure — opaque regions
+    are excluded via the shared `content_lines` primitive, so a table quoted
+    inside a fence (an illustration of a bad row, say) is never read as one."""
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for _, line in content_lines(artifact):
+        if _TABLE_ROW.match(line):
+            current.append(line)
+            continue
+        if current:
+            blocks.append(current)
+        current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _findings_tables(artifact: str) -> list[str]:
+    """Every FINDINGS table's data rows, located by the table's own header
+    signature (`Severity` AND `Resolution` columns) rather than by the section
+    it sits in.
+
+    Section boundaries can be moved, duplicated, commented out or demoted, but
+    a findings table carries its identity in its header, so an unresolved
+    blocking row inside one is located wherever it sits.
+
+    A table split by intervening content (a blank line, a heading, a list) is
+    still ONE logical table: a fragment with no header of its own inherits the
+    nearest preceding header — but ONLY when its column count matches that
+    header's. Continuation of a table preserves its width; an unrelated
+    headerless table (an author who omitted a header two sections later) does
+    not, and must not be read as findings. That width check is what keeps the
+    severed-row bypass closed without crying wolf on a legitimate report.
+
+    Disclosed residuals (deferred to the structural table parser, spec §7 /
+    PR B — see docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md):
+    identification is still a SHAPE assumption. A severed table declaring its
+    OWN header with a renamed resolution column (`Status`), a row stripped of
+    its leading `#` cell, a raw HTML `<table>`, an unrecognised severity word,
+    and a severed row padded to a different column count are all invisible
+    here. Those are table-grammar problems, not addressing problems.
+    """
+    tables: list[str] = []
+    findings_columns: int | None = None
+    for block in _table_blocks(artifact):
+        cells = [cell.strip().lower() for cell in block[0].strip("|").split("|")]
+        if not _NUMBERED_ROW.match(block[0]):
+            # A block that carries its own header re-establishes identity.
+            findings_columns = (
+                len(cells) if "severity" in cells and "resolution" in cells else None
+            )
+            if findings_columns is not None:
+                tables.append("\n".join(block[1:]))
+            continue
+        if findings_columns is not None and len(cells) == findings_columns:
+            tables.append("\n".join(block))
+    return tables
 
 
 def _table_data_rows(section: str) -> int:
@@ -217,6 +329,7 @@ class BuildReportContract:
         risk_tdd_policy: dict[str, str] | None = None,
         tdd_exception_categories: list[str] | None = None,
         task_review_verdicts: list[str] | None = None,
+        fix_rounds_override: dict | None = None,
         matrix_must_coverage: bool = False,
         metrics_config: dict | None = None,
     ) -> None:
@@ -230,6 +343,10 @@ class BuildReportContract:
         self._risk_tdd_policy = risk_tdd_policy
         self._tdd_exception_categories = tdd_exception_categories
         self._task_review_verdicts = task_review_verdicts
+        # Opt-in, armed by the CLI from
+        # `build.execution.final_review.fix_rounds_override`: `None` keeps the
+        # strict behaviour (over budget is always FAIL).
+        self._fix_rounds_override = fix_rounds_override
         # Opt-in, armed by the CLI only when the top-level `traceability`
         # block exists: `False` (default) leaves both `BR.*` matrix rules
         # off — backward compatible with contracts files that predate
@@ -252,18 +369,51 @@ class BuildReportContract:
         # reported by MD.duplicate_contract_section AND still fully scanned, so
         # it can never become a hiding place for an open blocking finding.
         located = {
-            name: find_sections(artifact, slugs) for name, slugs in _FIXED_SECTIONS.items()
+            name: find_sections(artifact, slugs, boundary_slugs=_BOUNDARY_SLUGS)
+            for name, slugs in _FIXED_SECTIONS.items()
         }
+        # The monitored set must EQUAL the trust set: any heading trusted to end
+        # a section is also watched for duplication. Round-3 review: monitoring
+        # only the six read sections left the other 15 vocabulary headings free
+        # to truncate a scope with nothing raising an alarm.
         duplicate_sections = [
             (name, [section.line for section in sections])
             for name, sections in located.items()
             if len(sections) > 1
         ]
+        seen_names = {name for name, _ in duplicate_sections}
+        by_slug: dict[str, list[Section]] = {}
+        for section in find_sections(
+            artifact, _BOUNDARY_SLUGS, boundary_slugs=_BOUNDARY_SLUGS
+        ):
+            by_slug.setdefault(section.slug, []).append(section)
+        for sections in by_slug.values():
+            if len(sections) < 2:
+                continue
+            name = sections[0].title
+            if name in seen_names:
+                continue
+            duplicate_sections.append((name, [section.line for section in sections]))
 
         def union(name: str) -> str:
             return "\n".join(section.body for section in located[name])
 
         blocking_open = self._blocking_open(union("Review Verdict"))
+        # Safety net that makes the whole bypass CLASS structurally dead: the
+        # same scan over the ENTIRE artifact. Scope games — a recognised
+        # boundary heading moved or duplicated inside the section, an opaque
+        # region, a demoted heading — can shrink a section body, but none of
+        # them can remove the row from the document. An unresolved blocking row
+        # is therefore reported wherever it sits; the only way to make it
+        # disappear is to delete it, which is a visible edit, not a hiding
+        # place. The net is anchored on the FINDINGS TABLE's own header
+        # (Severity + Resolution columns), not on every numbered row, so a
+        # free-text table that merely says "Important" in some column is never
+        # mistaken for a finding — fail-closed without crying wolf.
+        for table in _findings_tables(artifact):
+            for entry in self._blocking_open(table):
+                if entry not in blocking_open:
+                    blocking_open.append(entry)
 
         task_section = union("Task Execution with Agent Attribution")
         task_rows_incomplete = sum(
@@ -276,7 +426,11 @@ class BuildReportContract:
         overall_line = overall_match.group(0).strip() if overall_match else None
 
         tdd_section = union("TDD Evidence")
-        tdd_evidence_rows = _table_data_rows(tdd_section) if located["TDD Evidence"] else 0
+        # Counted PER matched section and summed: each copy carries its own
+        # header row, so counting the joined string would subtract only one.
+        tdd_evidence_rows = sum(
+            _table_data_rows(section.body) for section in located["TDD Evidence"]
+        )
         tdd_evidence_text = tdd_section
 
         task_ids_executed: set[str] = set()
@@ -355,7 +509,9 @@ class BuildReportContract:
         entries: list[str] = []
         for m in _NUMBERED_ROW.finditer(review_verdict_section):
             cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-            if len(cells) < 4 or cells[1].lower() not in _BLOCKING_SEVERITIES:
+            if len(cells) < 4 or not (
+                _BLOCKING_SEVERITIES & set(_SEVERITY_WORD.findall(cells[1].lower()))
+            ):
                 continue
             if _RESOLVED.match(cells[-1]):
                 continue
@@ -522,7 +678,8 @@ class BuildReportContract:
 
     def _check_fix_rounds(self, parsed: _ParsedBuildReport) -> list[Finding]:
         raw = parsed.metadata.get("fix rounds used")
-        match = _FRACTION.match(raw) if raw is not None else None
+        pattern = _FRACTION if self._fix_rounds_override is None else _FRACTION_WITH_OVERRIDE
+        match = pattern.match(raw) if raw is not None else None
         if match is None:
             return [
                 Finding(
@@ -536,7 +693,26 @@ class BuildReportContract:
             ]
         used, budget = int(match.group(1)), int(match.group(2))
         findings: list[Finding] = []
-        if used > budget:
+        override = None
+        if self._fix_rounds_override is not None:
+            override = _FIX_ROUNDS_OVERRIDE.search(raw or "")
+        if used > budget and override is not None:
+            # Authorized, attributed and justified: recorded as a visible WARN
+            # so the overrun stays auditable. The budget itself is untouched.
+            findings.append(
+                Finding(
+                    level=Level.WARN,
+                    rule="BR.fix_rounds_override",
+                    field="Fix rounds used",
+                    message=(
+                        f"fix rounds used ({used}) exceeds the budget ({budget}) "
+                        "under an authorized override"
+                    ),
+                    expected=f"used <= {budget}, or an attributed override",
+                    found=f"author={override.group(1)}; rationale={override.group(2)}",
+                )
+            )
+        elif used > budget:
             findings.append(
                 Finding(
                     level=Level.FAIL,

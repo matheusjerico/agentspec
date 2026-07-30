@@ -110,14 +110,13 @@ def test_ship_skill_summary_and_boundary():
 
 def test_version_history_entry():
     entries = contracts()["version_history"]
-    assert entries[0]["version"] == "3.18.0"
-    assert "EXACT_SECTIONS" in entries[0]["changes"][0]
-    assert "MD.duplicate_contract_section" in entries[0]["changes"][0]
-    assert entries[1]["version"] == "3.17.0"
-    assert "LINTER_FAIL_CLOSED" in entries[1]["changes"][0]
-    assert entries[2]["version"] == "3.16.0"
-    assert "WORKFLOW_METRICS" in entries[2]["changes"][0]
-    assert "BR.metrics_" in entries[2]["changes"][0]
+    expected = ["3.19.0", "3.18.0", "3.17.0", "3.16.0"]
+    assert [entry["version"] for entry in entries[:4]] == expected
+    assert "fix_rounds_override" in entries[0]["changes"][0]
+    assert "MD.duplicate_contract_section" in entries[1]["changes"][0]
+    assert "LINTER_FAIL_CLOSED" in entries[2]["changes"][0]
+    assert "WORKFLOW_METRICS" in entries[3]["changes"][0]
+    assert "BR.metrics_" in entries[3]["changes"][0]
 
 
 def test_two_same_version_blocks_compare_without_prose():

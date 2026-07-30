@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from spec_linter.sections import Section, find_sections, slug
+from spec_linter.sections import Section, find_sections, heading_slugs, slug
 
 DOC = """\
 # Title
@@ -111,9 +111,110 @@ def test_section_is_frozen() -> None:
 
 def test_level_parameter_addresses_other_heading_levels() -> None:
     sections = find_sections(DOC, {"alpha"}, level=3)
-    assert [s.body.strip() for s in sections] == ["demoted body"]
+    assert len(sections) == 1
+    # Conservative same-level boundary: a level-3 section runs to the next
+    # level-3 heading, so it may overrun its parent — a larger scope can only
+    # add findings, never hide one.
+    assert sections[0].body.strip().startswith("demoted body")
 
 
 def test_trailing_whitespace_in_heading_is_tolerated() -> None:
     doc = "## Alpha   \n\nbody\n"
     assert [s.title for s in find_sections(doc, {"alpha"})] == ["Alpha"]
+
+
+# --- fail-closed boundary + fenced-code awareness -----------------------------
+# Both rules exist because this module's first draft used a same-or-higher-level
+# boundary with no fence awareness, which let a stray `#` line (even a comment
+# inside a quoted snippet) truncate a section and drop findings from the scan.
+
+
+def test_stray_higher_level_heading_does_not_end_a_section() -> None:
+    doc = "## Alpha\n\nfirst\n\n# Stray Top Level\n\nstill alpha\n\n## Beta\n\nx\n"
+    body = find_sections(doc, {"alpha"})[0].body
+    assert "first" in body
+    assert "still alpha" in body  # a larger scope can add findings, never hide them
+    assert "x" not in body.split("## Beta")[0]
+
+
+def test_hash_comment_inside_a_fenced_block_is_not_a_heading() -> None:
+    doc = "## Alpha\n\n```bash\n# TODO: unsafe eval\n```\n\nafter snippet\n\n## Beta\n\nx\n"
+    body = find_sections(doc, {"alpha"})[0].body
+    assert "after snippet" in body
+
+
+def test_fenced_pseudo_heading_never_creates_a_section() -> None:
+    doc = "# Doc\n\n```markdown\n## Alpha\n```\n\n## Beta\n\nx\n"
+    assert find_sections(doc, {"alpha"}) == []
+    assert "alpha" not in heading_slugs(doc)
+
+
+def test_tilde_fences_are_honoured_too() -> None:
+    doc = "## Alpha\n\n~~~text\n## Beta\n~~~\n\nafter\n\n## Gamma\n\nx\n"
+    sections = find_sections(doc, {"alpha", "beta"})
+    assert [s.slug for s in sections] == ["alpha"]
+    assert "after" in sections[0].body
+
+
+def test_indented_fence_and_heading_are_recognised() -> None:
+    doc = "## Alpha\n\n   ```\n   # not a heading\n   ```\n\ntail\n\n## Beta\n\nx\n"
+    assert "tail" in find_sections(doc, {"alpha"})[0].body
+
+
+# --- closed boundary vocabulary (the structural defence) ----------------------
+# Enumerated from "CommonMark constructs that can carry a literal `#` line" PLUS
+# the plainest attack of all: a legitimate-looking unrecognised heading. Only
+# recognised contract sections may end a section, so all of these are content.
+
+BOUNDS = {"alpha", "beta"}
+
+
+def _alpha_body(middle: str) -> str:
+    doc = f"## Alpha\n\nhead\n\n{middle}\n\ntail\n\n## Beta\n\nbeta body\n"
+    return find_sections(doc, {"alpha"}, boundary_slugs=BOUNDS)[0].body
+
+
+@pytest.mark.parametrize(
+    "middle",
+    [
+        "## Notes",                                  # plain unrecognised heading
+        "# Stray Top Level",                         # higher level
+        "### Subsection",                            # lower level
+        "<!--\n## superseded\n-->",                  # multi-line HTML comment
+        "<!-- ## Beta -->",                          # a REAL boundary name, commented out
+        "```bash\n# TODO: unsafe eval\n```",         # fenced comment
+        "````\n```\n## Beta\n```\n````",             # nested shorter fence run
+        "~~~text\n## Beta\n~~~",                     # tilde fence
+        "    # indented code comment",               # 4-space indented code
+    ],
+)
+def test_no_unrecognised_construct_can_truncate_a_section(middle: str) -> None:
+    body = _alpha_body(middle)
+    assert "head" in body
+    assert "tail" in body, "the section was truncated — a scan scope could hide findings"
+    assert "beta body" not in body, "the real boundary must still end the section"
+
+
+def test_recognised_boundary_still_ends_the_section() -> None:
+    body = _alpha_body("## Beta\n\nbeta body\n\n## Alpha Notes")
+    assert "head" in body
+    assert "beta body" not in body
+
+
+def test_closer_shorter_than_opener_does_not_close_the_fence() -> None:
+    doc = "## Alpha\n\n````\n```\n## Beta\n````\n\ntail\n\n## Beta\n\nx\n"
+    body = find_sections(doc, {"alpha"}, boundary_slugs=BOUNDS)[0].body
+    assert "tail" in body
+
+
+def test_crlf_artifacts_are_handled() -> None:
+    doc = "## Alpha\r\n\r\nhead\r\n\r\n## Notes\r\n\r\ntail\r\n\r\n## Beta\r\n\r\nx\r\n"
+    body = find_sections(doc, {"alpha"}, boundary_slugs=BOUNDS)[0].body
+    assert "head" in body and "tail" in body and "x" not in body
+
+
+def test_without_boundary_slugs_every_peer_still_bounds() -> None:
+    # Backwards-compatible default for callers that have no vocabulary.
+    doc = "## Alpha\n\nhead\n\n## Notes\n\ntail\n"
+    body = find_sections(doc, {"alpha"})[0].body
+    assert "head" in body and "tail" not in body

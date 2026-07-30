@@ -72,7 +72,25 @@ The template ships `## TDD Evidence (required when TDD Mode != off)`; hand-writt
 
 It guards the addressing of sections the core rules read (review verdict, task execution), which are never opt-in. Opt-in families' sections are covered by the same rule for free — a duplicated `## Task Reviews` is a structural defect regardless of whether its verdict rules are armed.
 
-Gate D: all four ≥ 0.90 — no pauses. (Interactive run; threshold 0.80.)
+### Decision 5: Section bodies use a SAME-LEVEL boundary and ignore fenced code `[ASSUMED 0.93]` *(added in fix-round 1)*
+
+The first draft used the standard Markdown boundary (next heading of the same **or higher** level) with no fence awareness. Review reproduced two live bypasses from that choice: a stray `# x` line parked above an unresolved Critical row truncated the section (deliberate), and — with no adversarial intent at all — a `# TODO: ...` comment inside a quoted ```bash``` snippet did the same, because a line-anchored regex cannot tell code from prose. Both produced PASS on a report carrying an OPEN Critical.
+
+Therefore: a body runs to the next heading at **exactly** the same level, and fenced (``` / ~~~) regions are excluded from heading scanning entirely. **Disclosed trade-off:** a level-3 lookup can overrun its parent section, and a stray top-level heading stays inside the body — deliberately erring toward a LARGER scope, which can only add findings, never hide one. Rejected: standard same-or-higher semantics (the reproduced bypass) and fence-awareness alone (leaves the deliberate `# x` attack open).
+
+### Decision 6: The monitored set must EQUAL the trust set `[ASSUMED 0.93]` *(fix-round 3)*
+
+Review reproduced a third bypass: `MD.duplicate_contract_section` watched only the six sections the contract READS, while `_BOUNDARY_SLUGS` trusted 21 to end a section — so the other 15 could truncate a scope with nothing raising an alarm (`## Files Created` parked above an unresolved Critical → PASS, and worse, MOVED rather than duplicated so no duplicate existed to find). Duplicate monitoring now covers the whole vocabulary. The reviewer's formulation of the invariant is the one to carry forward: *the set of constructions trusted to delimit evidence must equal the set monitored for abuse of that trust.*
+
+### Decision 7: One opaque-region scanner, shared by headings AND rows `[ASSUMED 0.92]` *(fix-round 4)*
+
+The row-level safety net initially ran its own fence-unaware raw scan, so a findings table quoted inside a ```markdown fence (documenting "what a bad row looked like") blocked a clean report. `content_lines()` was extracted from `sections.py` and is now the single implementation of opacity for both heading detection and row scanning. Rejected: a second fence tracker in the contract module — two implementations of the same rule is how they drift.
+
+### Decision 8: Fragment inheritance is scoped by column WIDTH `[ASSUMED 0.90]` *(fix-round 4)*
+
+A table split by intervening content is one logical table, so a headerless fragment inherits the nearest preceding header — that is what keeps the severed-row bypass closed. Unscoped, inheritance reached across unrelated sections and made a decision log whose author omitted its header inherit "findings" identity (a clean report spuriously blocked). Inheritance therefore requires the fragment's column count to match the inherited header's: a genuine continuation preserves width, an unrelated table does not. **Disclosed cost:** a severed row padded to a different width escapes (R-5 in the PR B handoff).
+
+Gate D: all eight ≥ 0.90 — no pauses. (Interactive run; threshold 0.80.)
 
 ---
 
