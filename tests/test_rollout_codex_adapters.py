@@ -145,3 +145,38 @@ def test_target_without_claude_gets_no_agents_directory(tmp_path: Path, home: Pa
 
     assert result.returncode == 1
     assert not (empty / ".agents").exists()
+
+
+def test_backup_captures_agents_and_rollback_restores_it(target: Path, home: Path):
+    native = target / ".agents" / "skills" / "native" / "SKILL.md"
+    native.parent.mkdir(parents=True)
+    native.write_text("codex-native", encoding="utf-8")
+
+    applied = _run(target, "--apply", "--stamp", "teststamp", home=home)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+
+    backup = home / ".agentspec-rollout-backups" / "teststamp" / "target"
+    assert (backup / ".agents" / "skills" / "native" / "SKILL.md").exists()
+    assert (target / ".agents" / "skills" / "local-only").exists()
+
+    restored = _run(target, "--rollback", "--stamp", "teststamp", home=home)
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert not (target / ".agents" / "skills" / "local-only").exists()
+    assert native.read_text(encoding="utf-8") == "codex-native"
+
+
+def test_rollback_from_a_claude_only_stamp_succeeds(target: Path, home: Path):
+    stamp_dir = home / ".agentspec-rollout-backups" / "legacy" / "target"
+    (stamp_dir / ".claude" / "skills" / "restored").mkdir(parents=True)
+    (stamp_dir / ".claude" / "skills" / "restored" / "SKILL.md").write_text(
+        "---\nname: restored\ndescription: Example skill.\n---\n", encoding="utf-8"
+    )
+
+    applied = _run(target, "--apply", "--stamp", "current", home=home)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+
+    restored = _run(target, "--rollback", "--stamp", "legacy", home=home)
+
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert (target / ".claude" / "skills" / "restored").exists()
+    assert (target / ".agents" / "skills" / "local-only").exists()

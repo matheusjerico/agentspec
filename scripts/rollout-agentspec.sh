@@ -51,14 +51,14 @@
 #   --build          Run `make build` in the source repo before staging
 #   --source DIR     AgentSpec repo root (default: this script's repo)
 #   --stamp STAMP    Backup stamp (default: current YYYYmmdd-HHMMSS)
-#   --rollback       Restore each target's .claude from the --stamp backup
+#   --rollback       Restore each target's .claude and .agents from --stamp
 #   --help           Show this help
 #
 # Targets: pass directories as arguments, or list them in
 # .agentspec-rollout-targets at the repo root (gitignored) — one path per
 # line, '#' comments allowed; override the file with $AGENTSPEC_ROLLOUT_TARGETS.
 #
-# Backups: ~/.agentspec-rollout-backups/<stamp>/<target-name>/.claude
+# Backups: ~/.agentspec-rollout-backups/<stamp>/<target-name>/{.claude,.agents}
 # Exit codes: 0 success · 1 partial (a target failed/skipped) · 2 bad usage/env
 # =============================================================================
 
@@ -295,6 +295,10 @@ backup_target() {
     mkdir -p "$dest"
     cp -R "${target}/.claude" "${dest}/.claude"
     log "    backup: ${dest}/.claude"
+    if [[ -e "${target}/.agents" ]]; then
+        cp -R "${target}/.agents" "${dest}/.agents"
+        log "    backup: ${dest}/.agents"
+    fi
 }
 
 sync_codex_adapters() {
@@ -454,20 +458,28 @@ PYEOF
 
 rollback_target() {
     local target="$1"
-    local name src
+    local name src restored
     name="$(basename "$target")"
-    src="${BACKUP_ROOT}/${STAMP}/${name}/.claude"
+    src="${BACKUP_ROOT}/${STAMP}/${name}"
 
     log ""
     info "Rollback: ${target} from ${src}"
-    if [[ ! -d "$src" ]]; then
+    if [[ ! -d "${src}/.claude" && ! -d "${src}/.agents" ]]; then
         warn "no backup for ${name} at stamp ${STAMP} — skipping"
         FAILURES=$((FAILURES + 1))
         return 0
     fi
-    rm -rf "${target}/.claude"
-    cp -R "$src" "${target}/.claude"
-    log "    restored"
+
+    restored=""
+    local part
+    for part in .claude .agents; do
+        [[ -d "${src}/${part}" ]] || continue
+        rm -rf "${target:?}/${part}"
+        cp -R "${src}/${part}" "${target}/${part}"
+        restored="${restored} ${part}"
+    done
+    log "    restored:${restored}"
+    return 0
 }
 
 # --- main -------------------------------------------------------------------
