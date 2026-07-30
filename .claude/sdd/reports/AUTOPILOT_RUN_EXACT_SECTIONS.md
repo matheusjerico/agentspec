@@ -13,7 +13,7 @@
 | **DEFINE (input)** | .claude/sdd/features/DEFINE_EXACT_SECTIONS.md |
 | **Flags** | none |
 | **Branch** | feat/auto-exact-sections |
-| **Status** | 🔄 In Progress |
+| **Status** | ✅ Success (PR: https://github.com/matheusjerico/agentspec/pull/15) |
 
 ---
 
@@ -33,6 +33,7 @@
 | L | build | 1 | spec-lint --phase build --legacy-mode fail exit 0 (WARN: authorized fix-round override, v3.19.0) | PASS | 2026-07-30T07:40Z | - | - |
 | B | build | 1 | BUILD_REPORT complete; 183 root + 334 spec-linter; build + parity exit 0; 18/18 attack vectors blocked | PASS | 2026-07-30T07:40Z | - | - |
 | S | ship | 1 | pre-ship checklist: verdict clean-with-minors, 517/517 green, statuses Shipped; PR_READY generated | PASS | 2026-07-30T07:45Z | - | - |
+| PR | pr | 1 | mutable subset revalidated (tree clean, conflict-free, 183+334 green, build exit 0); PR #15 opened | PASS | 2026-07-30T07:50Z | - | - |
 
 **Outcome legend:** PASS · FAIL (recoverable, retry follows) · REFINE (judge WARN fed one regeneration) · ANSWERED (Gate D interactive pause resolved by the human) · SKIP:{reason} (visible skip — sensor could not run; never an assumed PASS) · SKIPPED (flag) · ABORT (terminal)
 
@@ -47,8 +48,8 @@
 | Ignition | .claude/sdd/features/DEFINE_EXACT_SECTIONS.md | 377acac — ignition | I: re-score 15/15 |
 | Design | .claude/sdd/archive/EXACT_SECTIONS/DESIGN_EXACT_SECTIONS.md | 6e98885 — design complete | L: PASS · J: SKIP:crash-exit1 · D: 0 pauses (4 [ASSUMED] ≥ 0.90) |
 | Build | .claude/sdd/archive/EXACT_SECTIONS/BUILD_REPORT_EXACT_SECTIONS.md | 072a1ef — build complete | R: clean-with-minors (4 rounds, authorized) · L: PASS · B: PASS |
-| Ship | .claude/sdd/archive/EXACT_SECTIONS/SHIPPED_2026-07-30.md | pending (this commit) | S: PASS · PR_READY generated |
-| PR | pending | - | - |
+| Ship | .claude/sdd/archive/EXACT_SECTIONS/SHIPPED_2026-07-30.md | 8f8414e — ship | S: PASS · PR_READY generated |
+| PR | https://github.com/matheusjerico/agentspec/pull/15 | this commit — close run | PR: PASS |
 
 ---
 
@@ -99,7 +100,7 @@ N/A
 
 | Tier | Target | Result |
 |------|--------|--------|
-| Terminal summary | stdout | pending |
+| Terminal summary | stdout | delivered |
 | OS notification | n/a (interactive entrypoint) | - |
 | Webhook | not configured | - |
 
@@ -109,13 +110,13 @@ N/A
 
 | Metric | Value |
 |--------|-------|
-| **Terminal Status** | 🔄 In Progress |
-| **Phases Completed** | 0/5 (ignition · design · build · ship · PR) |
-| **Gates Evaluated** | 1 (1 PASS) |
+| **Terminal Status** | ✅ Success |
+| **Phases Completed** | 5/5 (ignition · design · build · ship · PR) |
+| **Gates Evaluated** | 11 (7 PASS, 3 FAIL→fixed, 1 SKIP:crash-exit1) |
 | **Total Regenerations** | 0 |
 | **Human Interactions** | 3 (scope of the bundled Codex commits; residuals → PR B; fix-round budget) |
-| **PR** | - |
-| **Manual Follow-up** | - |
+| **PR** | https://github.com/matheusjerico/agentspec/pull/15 |
+| **Manual Follow-up** | PR B consumes docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md; judge.py crash worth fixing |
 
 ---
 
