@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tools.release_gate import ReleaseEvidenceError, validate_release_evidence
+from tools.release_gate import (
+    ReleaseEvidenceError,
+    _bound_path,
+    validate_release_evidence,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -217,3 +221,18 @@ def test_make_release_gate_uses_semantic_validator() -> None:
     assert "python3 tools/release_gate.py" in makefile
     assert "grep -Eq '^## (Go|No-Go) Decision'" not in makefile
     assert "SHIPPED_2026-07-30" not in makefile
+
+
+def test_bound_path_rejects_symlink_before_resolution(tmp_path: Path) -> None:
+    target = tmp_path / "mutable.json"
+    target.write_text("{}")
+    link = tmp_path / "benchmark.json"
+    link.symlink_to(target.name)
+
+    with pytest.raises(ReleaseEvidenceError, match="symlink"):
+        _bound_path(
+            tmp_path,
+            "benchmark.json",
+            kind="benchmark",
+            require_tracked=False,
+        )

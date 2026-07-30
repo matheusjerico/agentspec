@@ -107,13 +107,17 @@ def _bound_path(
 ) -> Path:
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute():
         raise ReleaseEvidenceError(f"{kind} path must be repository-relative")
-    candidate = (repo / raw).resolve()
+    lexical = repo / raw
+    current = repo
+    for part in Path(raw).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ReleaseEvidenceError(f"{kind} path must not contain symlinks")
+    candidate = lexical.resolve()
     try:
         candidate.relative_to(repo.resolve())
     except ValueError as exc:
         raise ReleaseEvidenceError(f"{kind} path escapes the repository") from exc
-    if candidate.is_symlink():
-        raise ReleaseEvidenceError(f"{kind} path must not be a symlink")
     if require_tracked:
         tracked = subprocess.run(
             ["git", "ls-tree", "-r", "--name-only", "HEAD", "--", raw],
