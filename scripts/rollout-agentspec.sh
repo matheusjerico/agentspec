@@ -20,6 +20,16 @@
 #     kb/<each domain shipped in the plugin payload> + kb/_templates
 #     sdd/templates/  sdd/architecture/  tools/spec-linter/  tools/spec-judge/
 #     scripts/judge.py  scripts/autopilot.sh  + the managed README/_index files
+#     .agents/skills/<adapter per target skill and AgentSpec command>
+#
+#   GENERATED:
+#     .agents/skills/ — Codex adapters derived from the target's own post-sync
+#     .claude/ tree. Entries the generator does not produce (Codex-native
+#     skills) are preserved. A validation failure leaves .agents/ untouched,
+#     reports the offending source, and marks the run partial.
+#     Dry-run counts reflect the target's current tree; a validation error
+#     predicted there is authoritative, because payload components are
+#     validated by `make check`.
 #
 #   MERGED:
 #     kb/_index.yaml — new payload index + the target's target-only domain
@@ -80,7 +90,7 @@ info() { printf '==> %s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die()  { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 
-usage() { sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,64p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -287,6 +297,28 @@ backup_target() {
     log "    backup: ${dest}/.claude"
 }
 
+sync_codex_adapters() {
+    local target="$1"
+    local sets out rc line
+    sets="$(IFS=,; printf '%s' "${COMMAND_SETS[*]}")"
+
+    local args=(--root "$target" --command-sets "$sets" --preserve-unknown)
+    [[ "$MODE" == "dry-run" ]] && args+=(--plan)
+
+    rc=0
+    out="$(python3 "${SOURCE_DIR}/scripts/generate-codex-adapters.py" "${args[@]}" 2>&1)" || rc=$?
+
+    if [[ "$rc" -ne 0 ]]; then
+        log "    adapters: FAILED — ${out#error: }"
+        FAILURES=$((FAILURES + 1))
+        return 0
+    fi
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && log "    adapters: ${line}"
+    done <<< "$out"
+    return 0
+}
+
 sync_target() {
     local target="$1"
     local name tc item
@@ -367,6 +399,8 @@ sync_target() {
         chmod +x "${tc}/scripts/autopilot.sh" 2>/dev/null || true
     fi
     log "    scripts: replaced ${SCRIPT_FILES[*]}"
+
+    sync_codex_adapters "$target"
 
     report_preserved "$tc"
     report_unclassified "$tc"
