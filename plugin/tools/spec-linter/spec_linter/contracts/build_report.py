@@ -41,7 +41,7 @@ the whole-branch final review stays mandatory regardless of task outcomes.
 A fourth opt-in pair — sourced from the top-level `traceability` block
 (Increment 6) — arms via the constructor's `matrix_must_coverage` (`False`
 default disables both): `BR.must_uncovered` fails every MUST row of the
-filled `## Traceability Matrix` (`_section_exact`-scoped, mirroring
+filled `## Traceability Matrix` (exact-slug scoped, mirroring
 `## Task Reviews`) whose Tests cell is empty/`-` or whose Result cell lacks
 `pass`, unless the Tests cell records the sanctioned `exception: <reason>`
 grammar (Increment 4 precedent) — recorded, auditable, exempt.
@@ -53,7 +53,7 @@ token/a missing Risk Level row all stay silent.
 A fifth opt-in set — sourced from the top-level `workflow_metrics` block
 (Increment 9) — arms via the constructor's `metrics_config` (`None` default
 disables all five): the report's `## Workflow Metrics` fenced-yaml block
-(`_section_exact`-scoped) must exist (`BR.metrics_missing`, at the
+(exact-slug scoped) must exist (`BR.metrics_missing`, at the
 caller-supplied legacy level — the mid-migration adoption path), parse to a
 mapping rooted at `workflow_metrics` (`BR.metrics_parseable`, FAIL), declare
 the contract's exact `schema_version` (`BR.metrics_schema_version`, FAIL),
@@ -71,6 +71,15 @@ reason-prose marker exemption is shape-aware — it applies only to the
 brace guards): a legitimate string containing a literal `{...}` pair is
 rejected as a placeholder — fails safe; keep literal braces out of measured
 strings and reasons.
+
+Section ADDRESSING is exact and shared (`..sections`): every fixed-name section
+above is located by exact slug equality at `##` level, all matches are kept,
+and row/finding scans read their UNION — so no heading variation can redefine a
+gate's scope (spec §6, the Critical bypass: a `## Review Verdict Notes` decoy
+ahead of the real section used to hide an OPEN Critical finding). A section
+located more than once is `MD.duplicate_contract_section` (FAIL, always-on),
+and a demoted heading is simply not the section, surfacing as a missing
+required section instead of an empty scan scope.
 """
 
 from __future__ import annotations
@@ -80,14 +89,14 @@ from dataclasses import dataclass
 
 import yaml
 
+from ..sections import find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
 # Section presence and section scoping both bind on exactly ##-level headings
-# (the template's section level) — a single heading vocabulary, so the
-# presence check and the findings-scan scope can never disagree about what
-# "the Review Verdict section" is. A demoted "### Review Verdict" is a
+# via the shared addressing module (`..sections`) — one heading vocabulary, so
+# the presence check and every findings-scan scope agree by construction about
+# what "the Review Verdict section" is. A demoted "### Review Verdict" is a
 # missing required section (fail-closed), never a silently-empty scan scope.
-_H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 _METADATA_ROW = re.compile(r"^\s*\|\s*\*\*([^*|]+)\*\*\s*\|\s*([^|]*)\|", re.MULTILINE)
 _NUMBERED_ROW = re.compile(r"^\|\s*\d+\s*\|.*$", re.MULTILINE)
 _TABLE_ROW = re.compile(r"^\|.*\|\s*$", re.MULTILINE)
@@ -117,35 +126,21 @@ _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 _ESTIMATE_MARKER = re.compile(r"^\s*~|approx|estimat", re.IGNORECASE)
 
 
-def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-
-
-def _section_after(artifact: str, slug_prefix: str) -> str | None:
-    """Text between the first `##` heading whose slug starts with
-    `slug_prefix` and the next `##` heading (or end of document); `None` if
-    no such heading exists."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)).startswith(slug_prefix):
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
-
-
-def _section_exact(artifact: str, slug: str) -> str | None:
-    """Like `_section_after`, but the heading slug must EQUAL `slug` — for
-    template-fixed headings ("Task Reviews") a prefix match would let a decoy
-    ("## Task Reviews Notes") shadow the real section in either direction
-    (false FAIL on a clean report, false PASS on a dirty one)."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)) == slug:
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
+# Every fixed-name section this contract reads, mapped to its CLOSED set of
+# sanctioned exact slugs. Prefix matching is gone (spec §6.4 items 1–2): a
+# heading either has one of these exact addresses or it is not the section.
+# `TDD Evidence` carries two sanctioned spellings — the template's
+# parenthetical heading and the bare one; the archived corpus uses the former.
+_FIXED_SECTIONS: dict[str, frozenset[str]] = {
+    "Review Verdict": frozenset({"review_verdict"}),
+    "Task Execution with Agent Attribution": frozenset(
+        {"task_execution_with_agent_attribution"}
+    ),
+    "TDD Evidence": frozenset({"tdd_evidence", "tdd_evidence_required_when_tdd_mode_off"}),
+    "Task Reviews": frozenset({"task_reviews"}),
+    "Traceability Matrix": frozenset({"traceability_matrix"}),
+    "Workflow Metrics": frozenset({"workflow_metrics"}),
+}
 
 
 def _table_data_rows(section: str) -> int:
@@ -202,6 +197,9 @@ class _ParsedBuildReport:
     matrix_rows_malformed: list[str]
     matrix_present: bool
     metrics_fence_present: bool
+    # (section display name, heading line numbers) for every fixed-name section
+    # located more than once — MD.duplicate_contract_section's input.
+    duplicate_sections: list[tuple[str, list[int]]]
     # Fence present + block None == the fence failed to parse to a mapping
     # rooted at workflow_metrics — no separate "broken" flag needed.
     metrics_block: dict | None
@@ -243,15 +241,31 @@ class BuildReportContract:
         self._metrics_config = metrics_config
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
-        headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
+        headings = heading_slugs(artifact)
 
         metadata: dict[str, str] = {}
         for m in _METADATA_ROW.finditer(artifact):
             metadata.setdefault(m.group(1).strip().lower(), m.group(2).strip())
 
-        blocking_open = self._blocking_open(_section_after(artifact, "review_verdict") or "")
+        # Exact addressing for every fixed-name section, all matches kept.
+        # Row/finding scans read the UNION of matches: a duplicated section is
+        # reported by MD.duplicate_contract_section AND still fully scanned, so
+        # it can never become a hiding place for an open blocking finding.
+        located = {
+            name: find_sections(artifact, slugs) for name, slugs in _FIXED_SECTIONS.items()
+        }
+        duplicate_sections = [
+            (name, [section.line for section in sections])
+            for name, sections in located.items()
+            if len(sections) > 1
+        ]
 
-        task_section = _section_after(artifact, "task_execution_with_agent_attribution") or ""
+        def union(name: str) -> str:
+            return "\n".join(section.body for section in located[name])
+
+        blocking_open = self._blocking_open(union("Review Verdict"))
+
+        task_section = union("Task Execution with Agent Attribution")
         task_rows_incomplete = sum(
             1
             for m in _NUMBERED_ROW.finditer(task_section)
@@ -261,9 +275,9 @@ class BuildReportContract:
         overall_match = _OVERALL_LINE.search(artifact)
         overall_line = overall_match.group(0).strip() if overall_match else None
 
-        tdd_section = _section_after(artifact, "tdd_evidence")
-        tdd_evidence_rows = _table_data_rows(tdd_section) if tdd_section is not None else 0
-        tdd_evidence_text = tdd_section if tdd_section is not None else ""
+        tdd_section = union("TDD Evidence")
+        tdd_evidence_rows = _table_data_rows(tdd_section) if located["TDD Evidence"] else 0
+        tdd_evidence_text = tdd_section
 
         task_ids_executed: set[str] = set()
         for m in _NUMBERED_ROW.finditer(task_section):
@@ -275,12 +289,11 @@ class BuildReportContract:
                 continue
             task_ids_executed.add(task_id)
 
-        task_reviews_section = _section_exact(artifact, "task_reviews")
-        task_reviews_section_present = task_reviews_section is not None
+        task_reviews_section_present = bool(located["Task Reviews"])
         task_review_rows: list[tuple[str, str]] = []
         task_review_rows_malformed: list[str] = []
-        if task_reviews_section is not None:
-            for m in _NUMBERED_ROW.finditer(task_reviews_section):
+        if task_reviews_section_present:
+            for m in _NUMBERED_ROW.finditer(union("Task Reviews")):
                 raw = m.group(0).strip()
                 cells = [c.strip() for c in raw.strip("|").split("|")]
                 # Fail-closed: a truncated or placeholder-bearing row becomes
@@ -291,17 +304,18 @@ class BuildReportContract:
                     continue
                 task_review_rows.append((cells[1], cells[4].lower()))
 
-        matrix_section = _section_exact(artifact, "traceability_matrix")
-        matrix_present = matrix_section is not None
+        matrix_present = bool(located["Traceability Matrix"])
         matrix_rows, matrix_rows_malformed = (
-            _parse_matrix_rows(matrix_section) if matrix_section is not None else ([], [])
+            _parse_matrix_rows(union("Traceability Matrix")) if matrix_present else ([], [])
         )
 
-        # First fence in the exact-slug section decides (the task-manifest
+        # First fence of the FIRST matching section decides (the task-manifest
         # precedent); a workflow_metrics fence under any OTHER heading is
-        # invisible here — the section is the contract's address.
-        metrics_section = _section_exact(artifact, "workflow_metrics")
-        metrics_fence = _YAML_FENCE.search(metrics_section) if metrics_section is not None else None
+        # invisible here — the section is the contract's address. Unlike the
+        # row scans, unioning is meaningless for a yaml document, so duplicates
+        # resolve deterministically to the first while MD.duplicate_* blocks.
+        metrics_sections = located["Workflow Metrics"]
+        metrics_fence = _YAML_FENCE.search(metrics_sections[0].body) if metrics_sections else None
         metrics_fence_present = metrics_fence is not None
         metrics_block: dict | None = None
         if metrics_fence is not None:
@@ -330,6 +344,7 @@ class BuildReportContract:
             matrix_present=matrix_present,
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
+            duplicate_sections=duplicate_sections,
         )
 
     @staticmethod
@@ -352,7 +367,7 @@ class BuildReportContract:
         if "schema version" not in parsed.metadata:
             return self._check_legacy(parsed)
 
-        findings: list[Finding] = []
+        findings: list[Finding] = self._check_duplicate_sections(parsed)
         findings.extend(self._check_schema_version(parsed))
         findings.extend(self._check_required_sections(parsed))
         findings.extend(self._check_verdict(parsed))
@@ -375,6 +390,29 @@ class BuildReportContract:
         if self._metrics_config is not None:
             findings.extend(self._check_metrics(parsed))
         return findings
+
+    def _check_duplicate_sections(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """`MD.duplicate_contract_section` (spec §6.4 item 6) — a fixed-name
+        contract section located more than once. Always-on: it guards the
+        ADDRESSING of sections the core rules read, so it cannot depend on any
+        opt-in family's arming. The scans themselves still read the union of
+        copies, so this finding reports a structural defect without ever
+        turning a duplicate into a hiding place."""
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="MD.duplicate_contract_section",
+                field=name,
+                message=(
+                    f"'{name}' appears {len(lines)} times — a contract section "
+                    "must have exactly one address; every copy is scanned "
+                    "(fail-closed), but the duplication itself blocks"
+                ),
+                expected=f"exactly one '## {name}' heading",
+                found="heading lines " + ", ".join(str(line) for line in lines),
+            )
+            for name, lines in parsed.duplicate_sections
+        ]
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
         findings = [
@@ -417,7 +455,7 @@ class BuildReportContract:
     def _check_required_sections(self, parsed: _ParsedBuildReport) -> list[Finding]:
         findings: list[Finding] = []
         for section in self._required:
-            if _slug(section) not in parsed.headings:
+            if slug(section) not in parsed.headings:
                 findings.append(
                     Finding(
                         level=Level.FAIL,

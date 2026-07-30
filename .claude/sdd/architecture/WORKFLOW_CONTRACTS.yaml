@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.17.0
+# Version: 3.18.0
 # Date: 2026-07-29
 
-version: "3.17.0"
+version: "3.18.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -1076,6 +1076,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.18.0"
+    date: "2026-07-30"
+    changes:
+      - "EXACT_SECTIONS (remediation spec §6, PR A — Critical): section addressing is now exact and shared. New spec_linter/sections.py (slug, Section, find_sections, heading_slugs) is the single addressing authority: exact slug equality at ##-level, EVERY match returned with its heading line. BuildReportContract routes all six fixed-name sections through it (Review Verdict, Task Execution with Agent Attribution, TDD Evidence — closed two-variant heading set, Task Reviews, Traceability Matrix, Workflow Metrics); prefix matching (_section_after) is deleted, so a '## Review Verdict Notes' decoy can no longer redefine a gate's scope and hide an OPEN Critical finding (the §3.1 reproduction now FAILs). Row and finding scans read the UNION of duplicate sections (fail-closed), and a section located more than once is the new always-on MD.duplicate_contract_section FAIL naming its heading lines. Archived corpus verified unchanged: zero addressing findings, zero FAILs across all 15 archived Build Reports."
+
   - version: "3.17.0"
     date: "2026-07-30"
     changes:
