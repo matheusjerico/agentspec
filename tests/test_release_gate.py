@@ -11,6 +11,8 @@ import yaml
 from tools.release_gate import (
     ReleaseEvidenceError,
     _bound_path,
+    _verify_live_target,
+    _verify_release_binding,
     validate_release_evidence,
 )
 
@@ -124,6 +126,7 @@ def release_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
         "decision": "go",
         "generated_at": datetime.now(UTC).isoformat(),
         "release_source_commit": sha,
+        "target_tip": sha,
         "benchmark": {
             "report": "benchmark.json",
             "framework": "agentspec",
@@ -235,4 +238,99 @@ def test_bound_path_rejects_symlink_before_resolution(tmp_path: Path) -> None:
             "benchmark.json",
             kind="benchmark",
             require_tracked=False,
+        )
+
+
+def _merge_topology(
+    repo: Path, *, release_code_change: bool = False
+) -> tuple[str, str]:
+    git(repo, "init", "-b", "main")
+    git(repo, "config", "user.email", "release@example.com")
+    git(repo, "config", "user.name", "Release Test")
+    (repo / "source.py").write_text("source = True\n")
+    git(repo, "add", "source.py")
+    git(repo, "commit", "-m", "source")
+    source = git(repo, "rev-parse", "HEAD")
+
+    git(repo, "checkout", "-b", "release")
+    evidence = repo / "docs" / "superpowers" / "reports" / "release.md"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text("verified\n")
+    git(repo, "add", str(evidence.relative_to(repo)))
+    git(repo, "commit", "-m", "release evidence")
+    if release_code_change:
+        (repo / "source.py").write_text("source = False\n")
+        git(repo, "add", "source.py")
+        git(repo, "commit", "-m", "late source change")
+
+    git(repo, "checkout", "main")
+    (repo / "target.txt").write_text("target-side change\n")
+    git(repo, "add", "target.txt")
+    git(repo, "commit", "-m", "target change")
+    target_tip = git(repo, "rev-parse", "HEAD")
+    return source, target_tip
+
+
+def test_release_binding_accepts_pre_merge_evidence_only(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "checkout", "release")
+
+    _verify_release_binding(tmp_path, source, target_tip)
+
+
+def test_release_binding_ignores_changes_already_in_merged_target(
+    tmp_path: Path,
+) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+
+    _verify_release_binding(tmp_path, source, target_tip)
+
+
+def test_release_binding_rejects_release_side_code_after_source(
+    tmp_path: Path,
+) -> None:
+    source, target_tip = _merge_topology(tmp_path, release_code_change=True)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+
+    with pytest.raises(ReleaseEvidenceError, match="source.py"):
+        _verify_release_binding(tmp_path, source, target_tip)
+
+
+def test_release_binding_rejects_code_change_after_merge(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+    (tmp_path / "post_merge.py").write_text("late = True\n")
+    git(tmp_path, "add", "post_merge.py")
+    git(tmp_path, "commit", "-m", "post-merge code")
+
+    with pytest.raises(ReleaseEvidenceError, match="post_merge.py"):
+        _verify_release_binding(tmp_path, source, target_tip)
+
+
+def test_live_target_accepts_post_merge_head(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+    live_tip = git(tmp_path, "rev-parse", "HEAD")
+
+    _verify_live_target(
+        tmp_path,
+        frozen_tip=target_tip,
+        live_tip=live_tip,
+        source_commit=source,
+    )
+
+
+def test_live_target_rejects_advance_not_checked_out(tmp_path: Path) -> None:
+    source, target_tip = _merge_topology(tmp_path)
+    git(tmp_path, "merge", "--no-ff", "release", "-m", "merge release")
+    live_tip = git(tmp_path, "rev-parse", "HEAD")
+    git(tmp_path, "checkout", "release")
+
+    with pytest.raises(ReleaseEvidenceError, match="target tip changed"):
+        _verify_live_target(
+            tmp_path,
+            frozen_tip=target_tip,
+            live_tip=live_tip,
+            source_commit=source,
         )

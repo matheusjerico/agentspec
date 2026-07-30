@@ -88,8 +88,66 @@ def _run_release_commands(repo: Path) -> None:
             )
 
 
-def _verify_release_binding(repo: Path, source_commit: str) -> None:
-    changed = _git(repo, "diff", "--name-only", source_commit, "HEAD").splitlines()
+def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _commit_changed_paths(repo: Path, commit: str) -> set[str]:
+    parents = _git(repo, "rev-list", "--parents", "-n", "1", commit).split()
+    if len(parents) > 2:
+        # A normal merge contains both parent trees but introduces no new
+        # changes of its own. --remerge-diff exposes only manual/conflict
+        # resolutions, which must still satisfy the evidence-only policy.
+        output = _git(
+            repo,
+            "show",
+            "--remerge-diff",
+            "--format=",
+            "--name-only",
+            commit,
+        )
+    else:
+        output = _git(
+            repo,
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            commit,
+        )
+    return {path for path in output.splitlines() if path}
+
+
+def _verify_release_binding(
+    repo: Path, source_commit: str, target_tip: str
+) -> None:
+    if _is_ancestor(repo, target_tip, "HEAD"):
+        commits = _git(
+            repo,
+            "rev-list",
+            f"{source_commit}..HEAD",
+            f"^{target_tip}",
+        ).splitlines()
+        changed = sorted(
+            {
+                path
+                for commit in commits
+                for path in _commit_changed_paths(repo, commit)
+            }
+        )
+    else:
+        # Before merge, the authorized target is a sibling of the release
+        # branch. Preserve the original binding check on the release branch.
+        changed = _git(repo, "diff", "--name-only", source_commit, "HEAD").splitlines()
     disallowed = [
         path
         for path in changed
@@ -100,6 +158,24 @@ def _verify_release_binding(repo: Path, source_commit: str) -> None:
             "release_source_commit is followed by non-evidence changes: "
             + ", ".join(disallowed)
         )
+
+
+def _verify_live_target(
+    repo: Path,
+    *,
+    frozen_tip: str,
+    live_tip: str,
+    source_commit: str,
+) -> None:
+    if live_tip == frozen_tip:
+        return
+    head = _git(repo, "rev-parse", "HEAD")
+    if (
+        live_tip != head
+        or not _is_ancestor(repo, frozen_tip, live_tip)
+        or not _is_ancestor(repo, source_commit, live_tip)
+    ):
+        raise ReleaseEvidenceError("target tip changed")
 
 
 def _bound_path(
@@ -167,6 +243,7 @@ def validate_release_evidence(
             "decision",
             "generated_at",
             "release_source_commit",
+            "target_tip",
             "benchmark",
             "dogfoods",
         },
@@ -187,13 +264,13 @@ def validate_release_evidence(
     if _SHA.fullmatch(source_commit) is None:
         raise ReleaseEvidenceError("release_source_commit must be a full lowercase SHA")
     _git(repo, "cat-file", "-e", f"{source_commit}^{{commit}}")
-    if subprocess.run(
-        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
-        cwd=repo,
-        check=False,
-    ).returncode != 0:
+    if not _is_ancestor(repo, source_commit, "HEAD"):
         raise ReleaseEvidenceError("release_source_commit is not an ancestor of HEAD")
-    _verify_release_binding(repo, source_commit)
+    target_tip = str(root["target_tip"])
+    if _SHA.fullmatch(target_tip) is None:
+        raise ReleaseEvidenceError("target_tip must be a full lowercase SHA")
+    _git(repo, "cat-file", "-e", f"{target_tip}^{{commit}}")
+    _verify_release_binding(repo, source_commit, target_tip)
 
     benchmark = root["benchmark"]
     if not isinstance(benchmark, dict):
@@ -345,8 +422,8 @@ def validate_release_evidence(
         if pr_data.get("ship_head_sha") != source_commit:
             raise ReleaseEvidenceError(f"dogfood {feature} PR_READY is stale")
         target = pr_data.get("target_branch")
-        target_tip = pr_data.get("target_tip_sha")
-        if not isinstance(target, str) or not isinstance(target_tip, str):
+        pr_target_tip = pr_data.get("target_tip_sha")
+        if not isinstance(target, str) or not isinstance(pr_target_tip, str):
             raise ReleaseEvidenceError(f"dogfood {feature} target evidence is incomplete")
         if target != authorized_target:
             raise ReleaseEvidenceError(
@@ -373,8 +450,21 @@ def validate_release_evidence(
             live_tip = _git(repo, "rev-parse", f"origin/{target}")
         else:
             live_tip = _git(repo, "rev-parse", target)
-        if live_tip != target_tip:
-            raise ReleaseEvidenceError(f"dogfood {feature} target tip changed")
+        if pr_target_tip != target_tip:
+            raise ReleaseEvidenceError(
+                f"dogfood {feature} target tip does not match production evidence"
+            )
+        try:
+            _verify_live_target(
+                repo,
+                frozen_tip=pr_target_tip,
+                live_tip=live_tip,
+                source_commit=source_commit,
+            )
+        except ReleaseEvidenceError as exc:
+            raise ReleaseEvidenceError(
+                f"dogfood {feature} target tip changed"
+            ) from exc
 
     if execute_commands:
         _run_release_commands(repo)
