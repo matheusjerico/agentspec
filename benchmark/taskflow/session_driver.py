@@ -1,16 +1,16 @@
 """Run one-plugin Claude Code sessions and retain auditable event streams.
 
-Isolation model: every session gets a fresh CLAUDE_CONFIG_DIR so no user-level
-plugins, skills, hooks, or global CLAUDE.md contaminate the run. Exactly one
---plugin-dir is passed. Both frameworks receive the identical --allowedTools
-set; --dangerously-skip-permissions is never used.
+Isolation model: Claude authentication comes from the user's configured
+profile, while ``--setting-sources project`` excludes user settings and exactly
+one ``--plugin-dir`` is passed. The init event is retained so the loaded plugin
+list can be audited. Both frameworks receive the identical ``--allowedTools``
+set; ``--dangerously-skip-permissions`` is never used.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -37,12 +37,6 @@ ALLOWED_TOOLS = (
     "WebFetch",
     "WebSearch",
 )
-_IDENTITY_KEYS = {
-    "oauthAccount",
-    "userID",
-    "machineID",
-    "hasCompletedOnboarding",
-}
 
 
 @dataclass(frozen=True)
@@ -116,22 +110,6 @@ def _load_session_metadata(output_dir: Path) -> dict:
     return {"turns": [], "total_cost_usd": 0.0, "session_id": None}
 
 
-def _seed_auth_identity(config_dir: Path) -> None:
-    """Copy only login identity needed by Claude; never copy user projects/plugins."""
-
-    destination = config_dir / ".claude.json"
-    source = Path.home() / ".claude.json"
-    if destination.exists() or not source.is_file():
-        return
-    try:
-        user_state = json.loads(source.read_text())
-    except (json.JSONDecodeError, OSError):
-        return
-    identity = {key: user_state[key] for key in _IDENTITY_KEYS if key in user_state}
-    destination.write_text(json.dumps(identity))
-    destination.chmod(0o600)
-
-
 def run(
     config: RunConfig,
     output_dir: Path,
@@ -152,15 +130,9 @@ def run(
     (turn_dir / "prompt.md").write_text(prompt)
 
     started = datetime.now(UTC)
-    config_dir = output_dir / ".claude-config"
-    config_dir.mkdir(exist_ok=True)
-    _seed_auth_identity(config_dir)
-    environment = os.environ.copy()
-    environment["CLAUDE_CONFIG_DIR"] = str(config_dir.resolve())
     result = subprocess.run(
         build_command(config, session_id),
         cwd=config.workdir,
-        env=environment,
         input=prompt,
         capture_output=True,
         text=True,

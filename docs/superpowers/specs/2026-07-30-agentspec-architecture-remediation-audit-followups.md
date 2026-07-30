@@ -231,12 +231,17 @@ memória de projeto vazia, porém o isolamento prometido não era executável.
 
 ### Correção
 
-- criar `runs/<run>/.claude-config`;
-- passar o path explicitamente no ambiente do processo Claude;
-- reutilizar o mesmo diretório nos turns retomados;
-- ignorar o diretório no Git para nunca versionar estado de autenticação;
-- adicionar regressão que captura o ambiente entregue ao subprocesso.
+O ensaio confirmou que um `CLAUDE_CONFIG_DIR` vazio também remove a sessão de
+autenticação e torna o runner inoperante. O contrato foi corrigido para não
+prometer esse isolamento impossível neste ambiente:
+
+- autenticação permanece no profile do usuário;
+- `--setting-sources project` exclui settings de usuário;
+- exatamente um `--plugin-dir` é passado;
+- o evento `init` bruto é retido para auditar a lista efetiva de plugins;
+- memória do novo workdir deve estar vazia antes do run.
 
 ### Critério de aceite
 
-Todo novo run usa uma configuração dedicada e persistente entre seus turns.
+Todo novo run prova no evento `init` que somente o plugin selecionado foi
+carregado, sem depender de uma afirmação não executável sobre autenticação.
