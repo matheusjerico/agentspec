@@ -15,6 +15,20 @@
   ],
   "properties": {
     "framework": {"enum": ["agentspec", "superpowers"]},
+    "framework_source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_passed", "api", "ui"],
+      "properties": {
+        "all_passed": {"type": "boolean"},
+        "api": {"$ref": "#/$defs/acceptanceResult"},
+        "ui": {"$ref": "#/$defs/acceptanceResult"}
+      }
+    },
     "versions": {
       "type": "object",
       "additionalProperties": false,
@@ -64,5 +78,16 @@
       }
     },
     "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "acceptanceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "total"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "total": {"type": "integer", "minimum": 1}
+      }
+    }
   }
 }
