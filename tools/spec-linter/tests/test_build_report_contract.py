@@ -8,6 +8,8 @@ so each test's intent (what changed, what should break) stays legible.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from spec_linter.contracts.build_report import BuildReportContract
@@ -986,3 +988,524 @@ def test_intact_review_rows_produce_no_malformed_finding() -> None:
     report = _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2")
     report += _task_reviews_section([("TASK-1", "clean"), ("TASK-2", "clean")])
     assert "BR.task_review_row_malformed" not in _rules(_lint_with_task_review(report))
+
+
+# --- exact section addressing + MD.duplicate_contract_section -----------------
+# Remediation spec §6 (PR A): a heading whose slug merely STARTS WITH a
+# contract section's slug could redefine the scanned scope, hiding open
+# blocking findings (§3.1 repro produced PASS). Addressing is now exact, all
+# matches are scanned as a union, and duplicates are a FAIL.
+
+_OPEN_CRITICAL_ROW = (
+    "| 2 | Critical | data loss on migrate | src/migrate.py | OPEN |"
+)
+_OPEN_IMPORTANT_ROW = (
+    "| 2 | Important | unbounded retry | src/retry.py | pending |"
+)
+
+
+def _with_review_row(report: str, row: str) -> str:
+    """Append a findings row to the real `## Review Verdict` section."""
+    return mutate(
+        report,
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |",
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |\n" + row,
+    )
+
+
+def _decoy_before(report: str, heading: str = "## Review Verdict Notes") -> str:
+    return mutate(report, "## Review Verdict\n", f"{heading}\n\nSide notes, no findings.\n\n## Review Verdict\n")
+
+
+def test_spec_3_1_repro_decoy_before_real_section_now_fails() -> None:
+    """The exact reproduction from remediation spec §3.1: a
+    `## Review Verdict Notes` decoy ahead of the real section, which carries
+    an OPEN Critical finding. This produced PASS before PR A."""
+    report = _decoy_before(_with_review_row(VALID_REPORT, _OPEN_CRITICAL_ROW))
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_decoy_after_real_section_leaves_scope_intact() -> None:
+    report = _with_review_row(VALID_REPORT, _OPEN_IMPORTANT_ROW)
+    report += "\n## Review Verdict Notes\n\nTrailing commentary.\n"
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_decoy_heading_is_inert_as_a_section_address() -> None:
+    # A decoy is not the section: its non-findings content contributes nothing,
+    # and it raises no duplicate (its slug is not a contract section).
+    report = VALID_REPORT + (
+        "\n## Review Verdict Notes\n\n"
+        "| # | Note | Author |\n|---|------|--------|\n"
+        "| 1 | Critical thinking was applied | @me |\n"
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_a_findings_table_anywhere_still_blocks() -> None:
+    # Safety net: the findings table is identified by its own header
+    # (Severity + Resolution), so an unresolved blocking row is caught wherever
+    # it sits — parking it under a decoy heading is not a hiding place.
+    report = VALID_REPORT + (
+        "\n## Review Verdict Notes\n\n"
+        "| # | Severity | Description | Location | Resolution |\n"
+        "|---|----------|-------------|----------|------------|\n"
+        + _OPEN_CRITICAL_ROW
+        + "\n"
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_duplicate_review_verdict_section_fails() -> None:
+    report = mutate(VALID_REPORT, "## Review Verdict\n", "## Review Verdict\n\nFirst copy.\n\n## Review Verdict\n")
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    findings = [f for f in verdict.findings if f.rule == "MD.duplicate_contract_section"]
+    assert len(findings) == 1
+    assert "Review Verdict" in (findings[0].field or "")
+
+
+def test_duplicate_section_message_names_the_heading_lines() -> None:
+    report = mutate(VALID_REPORT, "## Review Verdict\n", "## Review Verdict\n\nFirst copy.\n\n## Review Verdict\n")
+    finding = next(f for f in _lint(report).findings if f.rule == "MD.duplicate_contract_section")
+    # Two 1-indexed heading line numbers, in document order.
+    assert finding.found is not None
+    numbers = [int(tok) for tok in finding.found.replace(",", " ").split() if tok.isdigit()]
+    assert len(numbers) == 2 and numbers[0] < numbers[1]
+
+
+def test_union_scan_reads_blocking_rows_from_the_second_copy() -> None:
+    """Fail-closed: a duplicated section is never a hiding place — an open
+    blocking row in ANY copy blocks, alongside the duplicate finding."""
+    second_copy = (
+        "## Review Verdict\n\n"
+        "| # | Severity | Description | Location | Resolution |\n"
+        "|---|----------|-------------|----------|------------|\n"
+        + _OPEN_CRITICAL_ROW
+        + "\n\n"
+    )
+    report = mutate(VALID_REPORT, "## Acceptance Test Verification\n", second_copy + "## Acceptance Test Verification\n")
+    rules = _rules(_lint(report))
+    assert "MD.duplicate_contract_section" in rules
+    assert "BR.open_blocking_finding" in rules
+
+
+def test_duplicate_task_execution_section_fails() -> None:
+    report = mutate(
+        VALID_REPORT,
+        "## Files Created\n",
+        "## Task Execution with Agent Attribution\n\n| # | Task | Agent | Status |\n|---|------|-------|--------|\n| 1 | dup | x | ✅ |\n\n## Files Created\n",
+    )
+    assert "MD.duplicate_contract_section" in _rules(_lint(report))
+
+
+def test_duplicate_section_fails_even_when_its_family_is_disarmed() -> None:
+    # `## Task Reviews` rules are opt-in, but a duplicated contract section is
+    # a structural defect regardless of arming (always-on rule).
+    dup = "## Task Reviews\n\n| # | Task ID | Risk | Reviewer | Verdict |\n|---|---------|------|----------|---------|\n| 1 | TASK-1 | low | @r | clean |\n\n"
+    report = VALID_REPORT + "\n" + dup + dup
+    assert "MD.duplicate_contract_section" in _rules(_lint(report))
+
+
+def test_demoted_review_verdict_heading_is_a_missing_required_section() -> None:
+    report = mutate(VALID_REPORT, "## Review Verdict\n", "### Review Verdict\n")
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "L2.required_section" in _rules(verdict)
+
+
+def test_open_critical_in_the_real_section_fails() -> None:
+    verdict = _lint(_with_review_row(VALID_REPORT, _OPEN_CRITICAL_ROW))
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_open_important_in_the_real_section_fails() -> None:
+    verdict = _lint(_with_review_row(VALID_REPORT, _OPEN_IMPORTANT_ROW))
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_resolution_fixed_in_sha_is_not_blocking() -> None:
+    row = "| 2 | Critical | race condition | src/x.py | fixed in 9f2a1c0 |"
+    verdict = _lint(_with_review_row(VALID_REPORT, row))
+    assert "BR.open_blocking_finding" not in _rules(verdict)
+
+
+@pytest.mark.parametrize(
+    "resolution",
+    ["fixed? no", "Fixed - actually not", "Not resolved", "will fix in a follow-up", ""],
+)
+def test_look_alike_resolutions_still_block(resolution: str) -> None:
+    row = f"| 2 | Critical | race condition | src/x.py | {resolution} |"
+    assert "BR.open_blocking_finding" in _rules(_lint(_with_review_row(VALID_REPORT, row)))
+
+
+def test_bare_tdd_evidence_heading_addresses_the_section() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | required |")
+    report += (
+        "\n## TDD Evidence\n\n"
+        "| # | Task | RED | GREEN |\n|---|------|-----|-------|\n"
+        "| 1 | parser | failing test | passing test |\n"
+    )
+    assert "BR.tdd_evidence_missing" not in _rules(_lint(report))
+
+
+def test_full_template_tdd_evidence_heading_addresses_the_section() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | required |")
+    report += (
+        "\n## TDD Evidence (required when TDD Mode != off)\n\n"
+        "| # | Task | RED | GREEN |\n|---|------|-----|-------|\n"
+        "| 1 | parser | failing test | passing test |\n"
+    )
+    assert "BR.tdd_evidence_missing" not in _rules(_lint(report))
+
+
+def test_tdd_evidence_notes_decoy_is_not_the_section() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | required |")
+    report += (
+        "\n## TDD Evidence Notes\n\n"
+        "| # | Task | RED | GREEN |\n|---|------|-----|-------|\n"
+        "| 1 | parser | failing test | passing test |\n"
+    )
+    assert "BR.tdd_evidence_missing" in _rules(_lint(report))
+
+
+
+def _real_build_contract() -> BuildReportContract:
+    """The contract the repo actually ships, assembled from the canonical
+    WORKFLOW_CONTRACTS.yaml — so the dogfood below exercises the real arming
+    (metrics, traceability, task_review, tdd_policy), not a synthetic subset."""
+    from spec_linter import cli
+
+    contracts_file = Path(__file__).resolve().parents[3] / (
+        ".claude/sdd/architecture/WORKFLOW_CONTRACTS.yaml"
+    )
+    data = cli._load_contracts_data(contracts_file)
+    return cli._build_report_contract(data, contracts_file, "warn")
+
+
+# --- archived-corpus dogfood (spec §6.7 last bullet) --------------------------
+# Exact addressing must not invalidate a single archived report: every one of
+# them is template-conform, so the migration is provably non-breaking.
+
+_ARCHIVE = Path(__file__).resolve().parents[3] / ".claude/sdd/archive"
+
+_ADDRESSING_RULES = {"MD.duplicate_contract_section", "L2.required_section"}
+
+
+def _archived_reports() -> list[Path]:
+    return sorted(_ARCHIVE.glob("*/BUILD_REPORT_*.md"))
+
+
+@pytest.mark.skipif(not _ARCHIVE.is_dir(), reason="archive corpus not present")
+def test_archive_corpus_is_not_empty() -> None:
+    # Guards the two tests below from silently passing on an empty glob.
+    assert len(_archived_reports()) >= 10
+
+
+@pytest.mark.skipif(not _ARCHIVE.is_dir(), reason="archive corpus not present")
+def test_no_archived_report_gains_an_addressing_finding() -> None:
+    contract = _real_build_contract()
+    offenders: dict[str, list[str]] = {}
+    for report in _archived_reports():
+        rules = {f.rule for f in lint(report.read_text(), contract).findings}
+        hit = sorted(rules & _ADDRESSING_RULES)
+        if hit:
+            offenders[report.parent.name] = hit
+    assert offenders == {}
+
+
+@pytest.mark.skipif(not _ARCHIVE.is_dir(), reason="archive corpus not present")
+def test_no_archived_report_fails_under_exact_addressing() -> None:
+    contract = _real_build_contract()
+    failures = {
+        report.parent.name: sorted(
+            f.rule for f in lint(report.read_text(), contract).findings if f.level == Level.FAIL
+        )
+        for report in _archived_reports()
+    }
+    assert {name: rules for name, rules in failures.items() if rules} == {}
+
+
+def test_stray_h1_cannot_shrink_the_review_verdict_scope() -> None:
+    """Fix-round regression: a same-or-higher-level boundary let `# stray`
+    truncate the section and hide the Critical row below it (PASS)."""
+    row = _OPEN_CRITICAL_ROW
+    report = mutate(
+        VALID_REPORT,
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |",
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+        "\n\n# stray\n\n" + row,
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_hash_comment_in_a_quoted_snippet_cannot_shrink_the_scope() -> None:
+    """Same regression without any adversarial intent: reports quote shell and
+    YAML constantly, and `# TODO: ...` inside a fence is not a heading."""
+    report = mutate(
+        VALID_REPORT,
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |",
+        "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+        "\n\n```bash\n# TODO: unsafe eval left in prod\n```\n\n" + _OPEN_CRITICAL_ROW,
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_duplicated_tdd_evidence_rows_are_counted_per_section() -> None:
+    report = mutate(VALID_REPORT, "| **TDD Mode** | off |", "| **TDD Mode** | required |")
+    one = (
+        "\n## TDD Evidence\n\n| # | Task | RED | GREEN |\n|---|------|-----|-------|\n"
+        "| 1 | parser | failing | passing |\n"
+    )
+    parsed = _contract().parse(report + one + one)
+    assert parsed.tdd_evidence_rows == 2  # not 3 (union minus a single header)
+
+
+# --- boundary-vocabulary regressions (round-2 structural fix) -----------------
+
+
+def _review_section_with(middle: str) -> str:
+    resolved = "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+    return mutate(
+        VALID_REPORT, resolved, f"{resolved}\n\n{middle}\n\n{_OPEN_CRITICAL_ROW}"
+    )
+
+
+@pytest.mark.parametrize(
+    "middle",
+    [
+        "## Notes",
+        "## Review Verdict Notes",
+        "# stray",
+        "<!--\n## superseded\n-->",
+        "<!-- ## Task Reviews -->",
+        "```bash\n# TODO: unsafe eval left in prod\n```",
+        "````\n```\n## old draft\n```\n````",
+        "    # indented code comment",
+        "~~~text\n## Task Execution with Agent Attribution\n~~~",
+        # Recognised boundary headings that ARE legitimate elsewhere: moving or
+        # duplicating one inside the section truncates the scope, so the
+        # table-anchored safety net has to catch the row regardless.
+        "## Files Created\n\n- src/x.py",
+        "## Verification Results\n\n- `pytest` - ok",
+        # Severing the row from its table header with intervening content: a
+        # fragment inherits the nearest preceding header, so it stays a finding.
+        "- a bullet\n- another bullet",
+        "some interleaved prose",
+        "## Verification Results\n\n- `pytest` - ok",
+    ],
+)
+def test_nothing_can_hide_an_open_critical_from_the_review_scan(middle: str) -> None:
+    verdict = _lint(_review_section_with(middle))
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+
+
+def test_clean_report_stays_pass_under_the_boundary_vocabulary() -> None:
+    # The conservative boundary must not manufacture findings on a good report.
+    verdict = _lint(VALID_REPORT)
+    assert verdict.level == Level.PASS
+    assert verdict.findings == []
+
+
+def test_boundary_vocabulary_covers_every_template_section() -> None:
+    """Self-maintaining guard: if BUILD_REPORT_TEMPLATE.md grows a section and
+    it is not added to _BOUNDARY_SLUGS, the preceding section would silently
+    swallow it — this test fails first."""
+    import re as _re
+
+    from spec_linter.contracts.build_report import _BOUNDARY_SLUGS
+    from spec_linter.sections import slug as _slug
+
+    template = (
+        Path(__file__).resolve().parents[3] / ".claude/sdd/templates/BUILD_REPORT_TEMPLATE.md"
+    ).read_text()
+    template_slugs = {
+        _slug(m.group(1)) for m in _re.finditer(r"^##\s+(.*\S)\s*$", template, _re.M)
+    }
+    assert template_slugs <= _BOUNDARY_SLUGS, sorted(template_slugs - _BOUNDARY_SLUGS)
+
+
+def test_moved_boundary_heading_cannot_hide_a_critical() -> None:
+    """The hardest variant: a recognised boundary is MOVED (not duplicated)
+    into the section, so no duplicate finding fires — only the table-anchored
+    safety net can catch the row."""
+    resolved = "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+    report = mutate(
+        VALID_REPORT,
+        resolved,
+        f"{resolved}\n\n## Files Created\n\n- src/x.py\n\n{_OPEN_CRITICAL_ROW}",
+    )
+    report = mutate(
+        report,
+        "## Files Created\n\n- `src/sample/parser.py`\n- `tests/test_parser.py`\n\n",
+        "",
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.open_blocking_finding" in _rules(verdict)
+    assert "MD.duplicate_contract_section" not in _rules(verdict)
+
+
+def test_intact_non_findings_table_never_feeds_the_safety_net() -> None:
+    """Precision guard for the net: a free-text table whose header is intact is
+    not a findings table, whatever its cells happen to say."""
+    report = VALID_REPORT + (
+        "\n## Issues Encountered\n\n"
+        "| # | Issue | Resolution | Time Impact |\n"
+        "|---|-------|------------|-------------|\n"
+        "| 1 | Critical | still open, tracked upstream | +2h |\n"
+    )
+    verdict = _lint(report)
+    assert "BR.open_blocking_finding" not in _rules(verdict)
+
+
+def test_split_legitimate_table_is_not_read_as_findings() -> None:
+    """A stray blank line halves an ordinary table; the fragment inherits its
+    real (non-findings) header, so an "Important"-valued cell is not a finding.
+    Without inheritance this was a false FAIL on plausible hand-edited reports."""
+    report = VALID_REPORT + (
+        "\n## Autonomous Decisions\n\n"
+        "| # | Decision Point | Options | Chose | Rationale |\n"
+        "|---|----------------|---------|-------|-----------|\n\n"
+        "| 1 | Important | A vs B | A | deferred to a follow-up |\n"
+    )
+    verdict = _lint(report)
+    assert "BR.open_blocking_finding" not in _rules(verdict)
+
+
+def test_findings_table_quoted_inside_a_fence_is_illustration() -> None:
+    """Row scanning shares `content_lines`, so a worked example inside a fence
+    is quotation — the same opacity heading detection has."""
+    report = VALID_REPORT + (
+        "\n## Deviations from Design\n\nBefore the fix a finding looked like:\n\n"
+        "```markdown\n"
+        "| # | Severity | Description | Location | Resolution |\n"
+        "|---|----------|-------------|----------|------------|\n"
+        "| 1 | Critical | illustration only | x.py |  |\n"
+        "```\n"
+    )
+    verdict = _lint(report)
+    assert verdict.level == Level.PASS
+
+
+@pytest.mark.parametrize(
+    "severity",
+    ["Critical", "CRITICAL", "Critical (F1)", "**Critical**", "critical/high", "🔴 Critical"],
+)
+def test_severity_decoration_cannot_hide_meaning(severity: str) -> None:
+    row = f"| 2 | {severity} | SQL injection | src/q.py | OPEN |"
+    assert "BR.open_blocking_finding" in _rules(_lint(_with_review_row(VALID_REPORT, row)))
+
+
+@pytest.mark.parametrize("severity", ["Minor", "Info", "nit"])
+def test_non_blocking_severities_still_do_not_block(severity: str) -> None:
+    row = f"| 2 | {severity} | cosmetic | src/q.py | recorded |"
+    assert "BR.open_blocking_finding" not in _rules(_lint(_with_review_row(VALID_REPORT, row)))
+
+
+def test_headerless_table_in_a_later_section_does_not_inherit_findings_identity() -> None:
+    """Round-4 review FP: inheritance reached across unrelated sections, so a
+    decision log whose author omitted the header inherited "findings" from the
+    Review Verdict table. Width matching scopes inheritance to genuine
+    continuations (same column count), not to any later headerless table."""
+    report = VALID_REPORT + (
+        "\n## Autonomous Decisions\n\nDecision log (header omitted by the author):\n\n"
+        "| 1 | Important | escalate per policy | deferred |\n"
+    )
+    verdict = _lint(report)
+    assert "BR.open_blocking_finding" not in _rules(verdict)
+    assert verdict.level == Level.PASS
+
+
+def test_severed_continuation_of_the_findings_table_still_inherits() -> None:
+    """The other side of the width check: a real continuation keeps the table's
+    column count, so severing it with a boundary heading changes nothing."""
+    resolved = "| 1 | Important | Missing docstring | src/sample/parser.py:10 | Fixed in abc1234 |"
+    report = mutate(
+        VALID_REPORT,
+        resolved,
+        f"{resolved}\n\n## Files Created\n\n- src/x.py\n\n{_OPEN_CRITICAL_ROW}",
+    )
+    assert "BR.open_blocking_finding" in _rules(_lint(report))
+
+
+# --- authorized fix-round override (v3.19.0) ---------------------------------
+# The budget exists to stop thrashing; exceeding it must be a HUMAN decision,
+# recorded in the artifact — not a silent overrun and not a policy change.
+# Mirrors the risk_profile `override: {applied, author, rationale}` precedent.
+
+_OVERRIDE_CONFIG = {"requires": ["author", "rationale"]}
+
+
+def _contract_with_override(legacy_level: Level = Level.WARN) -> BuildReportContract:
+    return BuildReportContract(
+        required_sections=REQUIRED_SECTIONS,
+        verdicts=VERDICTS,
+        fix_budget=FIX_BUDGET,
+        schema_version=SCHEMA_VERSION,
+        tdd_mode_values=TDD_MODE_VALUES,
+        legacy_level=legacy_level,
+        fix_rounds_override=_OVERRIDE_CONFIG,
+    )
+
+
+def _with_fix_rounds(value: str) -> str:
+    return mutate(VALID_REPORT, "| **Fix rounds used** | 0/2 |", f"| **Fix rounds used** | {value} |")
+
+
+def test_over_budget_without_override_still_fails() -> None:
+    verdict = lint(_with_fix_rounds("4/2"), _contract_with_override())
+    assert verdict.level == Level.FAIL
+    assert "BR.fix_rounds_budget" in _rules(verdict)
+
+
+def test_over_budget_with_authorized_override_warns_not_fails() -> None:
+    verdict = lint(
+        _with_fix_rounds("4/2 (override: author=maintainer, rationale=live Critical still open)"),
+        _contract_with_override(),
+    )
+    assert verdict.level == Level.WARN
+    findings = [f for f in verdict.findings if f.rule == "BR.fix_rounds_override"]
+    assert len(findings) == 1
+    assert "maintainer" in (findings[0].found or "")
+
+
+def test_override_without_rationale_fails() -> None:
+    verdict = lint(
+        _with_fix_rounds("4/2 (override: author=maintainer, rationale=)"), _contract_with_override()
+    )
+    assert verdict.level == Level.FAIL
+
+
+def test_override_is_opt_in_and_ignored_when_unconfigured() -> None:
+    # Strict contract (no override block): the override clause buys nothing.
+    verdict = _lint(_with_fix_rounds("4/2 (override: author=x, rationale=y)"))
+    assert verdict.level == Level.FAIL
+
+
+def test_override_does_not_excuse_a_diverging_budget() -> None:
+    verdict = lint(
+        _with_fix_rounds("4/9 (override: author=maintainer, rationale=whatever)"),
+        _contract_with_override(),
+    )
+    assert verdict.level == Level.FAIL
+    assert any("diverges" in f.message for f in verdict.findings)
+
+
+def test_within_budget_stays_clean_under_the_override_contract() -> None:
+    verdict = lint(VALID_REPORT, _contract_with_override())
+    assert verdict.level == Level.PASS

@@ -41,7 +41,7 @@ the whole-branch final review stays mandatory regardless of task outcomes.
 A fourth opt-in pair — sourced from the top-level `traceability` block
 (Increment 6) — arms via the constructor's `matrix_must_coverage` (`False`
 default disables both): `BR.must_uncovered` fails every MUST row of the
-filled `## Traceability Matrix` (`_section_exact`-scoped, mirroring
+filled `## Traceability Matrix` (exact-slug scoped, mirroring
 `## Task Reviews`) whose Tests cell is empty/`-` or whose Result cell lacks
 `pass`, unless the Tests cell records the sanctioned `exception: <reason>`
 grammar (Increment 4 precedent) — recorded, auditable, exempt.
@@ -53,7 +53,7 @@ token/a missing Risk Level row all stay silent.
 A fifth opt-in set — sourced from the top-level `workflow_metrics` block
 (Increment 9) — arms via the constructor's `metrics_config` (`None` default
 disables all five): the report's `## Workflow Metrics` fenced-yaml block
-(`_section_exact`-scoped) must exist (`BR.metrics_missing`, at the
+(exact-slug scoped) must exist (`BR.metrics_missing`, at the
 caller-supplied legacy level — the mid-migration adoption path), parse to a
 mapping rooted at `workflow_metrics` (`BR.metrics_parseable`, FAIL), declare
 the contract's exact `schema_version` (`BR.metrics_schema_version`, FAIL),
@@ -71,6 +71,15 @@ reason-prose marker exemption is shape-aware — it applies only to the
 brace guards): a legitimate string containing a literal `{...}` pair is
 rejected as a placeholder — fails safe; keep literal braces out of measured
 strings and reasons.
+
+Section ADDRESSING is exact and shared (`..sections`): every fixed-name section
+above is located by exact slug equality at `##` level, all matches are kept,
+and row/finding scans read their UNION — so no heading variation can redefine a
+gate's scope (spec §6, the Critical bypass: a `## Review Verdict Notes` decoy
+ahead of the real section used to hide an OPEN Critical finding). A section
+located more than once is `MD.duplicate_contract_section` (FAIL, always-on),
+and a demoted heading is simply not the section, surfacing as a missing
+required section instead of an empty scan scope.
 """
 
 from __future__ import annotations
@@ -80,14 +89,14 @@ from dataclasses import dataclass
 
 import yaml
 
+from ..sections import Section, content_lines, find_sections, heading_slugs, slug
 from ..verdict import Finding, Level
 
 # Section presence and section scoping both bind on exactly ##-level headings
-# (the template's section level) — a single heading vocabulary, so the
-# presence check and the findings-scan scope can never disagree about what
-# "the Review Verdict section" is. A demoted "### Review Verdict" is a
+# via the shared addressing module (`..sections`) — one heading vocabulary, so
+# the presence check and every findings-scan scope agree by construction about
+# what "the Review Verdict section" is. A demoted "### Review Verdict" is a
 # missing required section (fail-closed), never a silently-empty scan scope.
-_H2 = re.compile(r"^##\s+(.*\S)\s*$", re.MULTILINE)
 _METADATA_ROW = re.compile(r"^\s*\|\s*\*\*([^*|]+)\*\*\s*\|\s*([^|]*)\|", re.MULTILINE)
 _NUMBERED_ROW = re.compile(r"^\|\s*\d+\s*\|.*$", re.MULTILINE)
 _TABLE_ROW = re.compile(r"^\|.*\|\s*$", re.MULTILINE)
@@ -99,8 +108,27 @@ _OVERALL_LINE = re.compile(r"^###\s+Overall:.*$", re.MULTILINE)
 # and verb-prefixed hedges ("fixed? no", "Fixed - actually not").
 _RESOLVED = re.compile(r"^(?:fixed|resolved)\s+in\s+\S+", re.IGNORECASE)
 _FRACTION = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
+# `used/budget` optionally followed by an AUTHORIZED override clause. The
+# budget exists to stop thrashing, so exceeding it must be a human decision
+# recorded in the artifact — never a silent overrun, and never a quiet edit of
+# the policy itself. Mirrors the risk_profile override precedent.
+_FRACTION_WITH_OVERRIDE = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*(\(.*\))?\s*$")
+_FIX_ROUNDS_OVERRIDE = re.compile(
+    r"\(override:\s*author\s*=\s*([^,]+?)\s*,\s*rationale\s*=\s*([^)]+?)\s*\)",
+    re.IGNORECASE,
+)
 _INCOMPLETE_MARKERS = ("⏳", "🔄", "❌")
 _BLOCKING_SEVERITIES = {"critical", "important"}
+# A severity cell is read as WORDS, not as an exact string: `Critical (F1)`,
+# `**Critical**`, `🔴 Critical` and `critical/high` all mean Critical to the
+# human reading the report, and an exact-match predicate let every one of them
+# evade the blocking rule — the same "trusted matcher narrower than the
+# human-readable meaning" failure this feature exists to eliminate. Disclosed
+# residual (spec §7 / PR B): an UNRECOGNISED severity word (`Blocker`, a typo,
+# a unicode lookalike) still evades; the fail-closed answer is "unknown
+# severity in a findings table blocks", which is a closed-vocabulary policy
+# addition PR B owns.
+_SEVERITY_WORD = re.compile(r"[a-z]+")
 # Anchored to a table-cell boundary (start-of-line or '|'), optionally prefixed
 # by the template's "n/a —": a cell DECLARING an exception matches, while
 # incidental "exception:" text buried mid-sentence in a RED/GREEN excerpt
@@ -117,35 +145,114 @@ _YAML_FENCE = re.compile(r"```yaml\s*\n(.*?)```", re.DOTALL)
 _ESTIMATE_MARKER = re.compile(r"^\s*~|approx|estimat", re.IGNORECASE)
 
 
-def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+# The CLOSED boundary vocabulary: only a heading the contract RECOGNISES as a
+# BUILD_REPORT section may end another section's body. Without this, any
+# same-level heading truncates a scan scope — a plain `## Notes` parked above an
+# unresolved Critical row was enough to hide it (reproduced), and no amount of
+# opaque-region handling can fix that, because the attack needs no trickery.
+# Kept in sync with BUILD_REPORT_TEMPLATE.md by a test; a section the template
+# grows is simply added here.
+_BOUNDARY_SLUGS: frozenset[str] = frozenset(
+    {
+        "metadata",
+        "summary",
+        "task_execution_with_agent_attribution",
+        "traceability_matrix",
+        "agent_contributions",
+        "task_reviews",
+        "files_created",
+        "verification_results",
+        "review_verdict",
+        "tdd_evidence",
+        "tdd_evidence_required_when_tdd_mode_off",
+        "issues_encountered",
+        "autonomous_decisions",
+        "deviations_from_design",
+        "blockers_if_any",
+        "acceptance_test_verification",
+        "performance_notes",
+        "workflow_metrics",
+        "data_quality_results_if_applicable",
+        "final_status",
+        "next_step",
+    }
+)
+
+# Every fixed-name section this contract reads, mapped to its CLOSED set of
+# sanctioned exact slugs. Prefix matching is gone (spec §6.4 items 1–2): a
+# heading either has one of these exact addresses or it is not the section.
+# `TDD Evidence` carries two sanctioned spellings — the template's
+# parenthetical heading and the bare one; the archived corpus uses the former.
+_FIXED_SECTIONS: dict[str, frozenset[str]] = {
+    "Review Verdict": frozenset({"review_verdict"}),
+    "Task Execution with Agent Attribution": frozenset(
+        {"task_execution_with_agent_attribution"}
+    ),
+    "TDD Evidence": frozenset({"tdd_evidence", "tdd_evidence_required_when_tdd_mode_off"}),
+    "Task Reviews": frozenset({"task_reviews"}),
+    "Traceability Matrix": frozenset({"traceability_matrix"}),
+    "Workflow Metrics": frozenset({"workflow_metrics"}),
+}
 
 
-def _section_after(artifact: str, slug_prefix: str) -> str | None:
-    """Text between the first `##` heading whose slug starts with
-    `slug_prefix` and the next `##` heading (or end of document); `None` if
-    no such heading exists."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)).startswith(slug_prefix):
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
+def _table_blocks(artifact: str) -> list[list[str]]:
+    """Contiguous runs of table lines that are LIVE structure — opaque regions
+    are excluded via the shared `content_lines` primitive, so a table quoted
+    inside a fence (an illustration of a bad row, say) is never read as one."""
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for _, line in content_lines(artifact):
+        if _TABLE_ROW.match(line):
+            current.append(line)
+            continue
+        if current:
+            blocks.append(current)
+        current = []
+    if current:
+        blocks.append(current)
+    return blocks
 
 
-def _section_exact(artifact: str, slug: str) -> str | None:
-    """Like `_section_after`, but the heading slug must EQUAL `slug` — for
-    template-fixed headings ("Task Reviews") a prefix match would let a decoy
-    ("## Task Reviews Notes") shadow the real section in either direction
-    (false FAIL on a clean report, false PASS on a dirty one)."""
-    matches = list(_H2.finditer(artifact))
-    for i, m in enumerate(matches):
-        if _slug(m.group(1)) == slug:
-            start = m.end()
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(artifact)
-            return artifact[start:end]
-    return None
+def _findings_tables(artifact: str) -> list[str]:
+    """Every FINDINGS table's data rows, located by the table's own header
+    signature (`Severity` AND `Resolution` columns) rather than by the section
+    it sits in.
+
+    Section boundaries can be moved, duplicated, commented out or demoted, but
+    a findings table carries its identity in its header, so an unresolved
+    blocking row inside one is located wherever it sits.
+
+    A table split by intervening content (a blank line, a heading, a list) is
+    still ONE logical table: a fragment with no header of its own inherits the
+    nearest preceding header — but ONLY when its column count matches that
+    header's. Continuation of a table preserves its width; an unrelated
+    headerless table (an author who omitted a header two sections later) does
+    not, and must not be read as findings. That width check is what keeps the
+    severed-row bypass closed without crying wolf on a legitimate report.
+
+    Disclosed residuals (deferred to the structural table parser, spec §7 /
+    PR B — see docs/reviews/2026-07-30-exact-sections-residuals-for-pr-b.md):
+    identification is still a SHAPE assumption. A severed table declaring its
+    OWN header with a renamed resolution column (`Status`), a row stripped of
+    its leading `#` cell, a raw HTML `<table>`, an unrecognised severity word,
+    and a severed row padded to a different column count are all invisible
+    here. Those are table-grammar problems, not addressing problems.
+    """
+    tables: list[str] = []
+    findings_columns: int | None = None
+    for block in _table_blocks(artifact):
+        cells = [cell.strip().lower() for cell in block[0].strip("|").split("|")]
+        if not _NUMBERED_ROW.match(block[0]):
+            # A block that carries its own header re-establishes identity.
+            findings_columns = (
+                len(cells) if "severity" in cells and "resolution" in cells else None
+            )
+            if findings_columns is not None:
+                tables.append("\n".join(block[1:]))
+            continue
+        if findings_columns is not None and len(cells) == findings_columns:
+            tables.append("\n".join(block))
+    return tables
 
 
 def _table_data_rows(section: str) -> int:
@@ -202,6 +309,9 @@ class _ParsedBuildReport:
     matrix_rows_malformed: list[str]
     matrix_present: bool
     metrics_fence_present: bool
+    # (section display name, heading line numbers) for every fixed-name section
+    # located more than once — MD.duplicate_contract_section's input.
+    duplicate_sections: list[tuple[str, list[int]]]
     # Fence present + block None == the fence failed to parse to a mapping
     # rooted at workflow_metrics — no separate "broken" flag needed.
     metrics_block: dict | None
@@ -219,6 +329,7 @@ class BuildReportContract:
         risk_tdd_policy: dict[str, str] | None = None,
         tdd_exception_categories: list[str] | None = None,
         task_review_verdicts: list[str] | None = None,
+        fix_rounds_override: dict | None = None,
         matrix_must_coverage: bool = False,
         metrics_config: dict | None = None,
     ) -> None:
@@ -232,6 +343,10 @@ class BuildReportContract:
         self._risk_tdd_policy = risk_tdd_policy
         self._tdd_exception_categories = tdd_exception_categories
         self._task_review_verdicts = task_review_verdicts
+        # Opt-in, armed by the CLI from
+        # `build.execution.final_review.fix_rounds_override`: `None` keeps the
+        # strict behaviour (over budget is always FAIL).
+        self._fix_rounds_override = fix_rounds_override
         # Opt-in, armed by the CLI only when the top-level `traceability`
         # block exists: `False` (default) leaves both `BR.*` matrix rules
         # off — backward compatible with contracts files that predate
@@ -243,15 +358,64 @@ class BuildReportContract:
         self._metrics_config = metrics_config
 
     def parse(self, artifact: str) -> _ParsedBuildReport:
-        headings = {_slug(m.group(1)) for m in _H2.finditer(artifact)}
+        headings = heading_slugs(artifact)
 
         metadata: dict[str, str] = {}
         for m in _METADATA_ROW.finditer(artifact):
             metadata.setdefault(m.group(1).strip().lower(), m.group(2).strip())
 
-        blocking_open = self._blocking_open(_section_after(artifact, "review_verdict") or "")
+        # Exact addressing for every fixed-name section, all matches kept.
+        # Row/finding scans read the UNION of matches: a duplicated section is
+        # reported by MD.duplicate_contract_section AND still fully scanned, so
+        # it can never become a hiding place for an open blocking finding.
+        located = {
+            name: find_sections(artifact, slugs, boundary_slugs=_BOUNDARY_SLUGS)
+            for name, slugs in _FIXED_SECTIONS.items()
+        }
+        # The monitored set must EQUAL the trust set: any heading trusted to end
+        # a section is also watched for duplication. Round-3 review: monitoring
+        # only the six read sections left the other 15 vocabulary headings free
+        # to truncate a scope with nothing raising an alarm.
+        duplicate_sections = [
+            (name, [section.line for section in sections])
+            for name, sections in located.items()
+            if len(sections) > 1
+        ]
+        seen_names = {name for name, _ in duplicate_sections}
+        by_slug: dict[str, list[Section]] = {}
+        for section in find_sections(
+            artifact, _BOUNDARY_SLUGS, boundary_slugs=_BOUNDARY_SLUGS
+        ):
+            by_slug.setdefault(section.slug, []).append(section)
+        for sections in by_slug.values():
+            if len(sections) < 2:
+                continue
+            name = sections[0].title
+            if name in seen_names:
+                continue
+            duplicate_sections.append((name, [section.line for section in sections]))
 
-        task_section = _section_after(artifact, "task_execution_with_agent_attribution") or ""
+        def union(name: str) -> str:
+            return "\n".join(section.body for section in located[name])
+
+        blocking_open = self._blocking_open(union("Review Verdict"))
+        # Safety net that makes the whole bypass CLASS structurally dead: the
+        # same scan over the ENTIRE artifact. Scope games — a recognised
+        # boundary heading moved or duplicated inside the section, an opaque
+        # region, a demoted heading — can shrink a section body, but none of
+        # them can remove the row from the document. An unresolved blocking row
+        # is therefore reported wherever it sits; the only way to make it
+        # disappear is to delete it, which is a visible edit, not a hiding
+        # place. The net is anchored on the FINDINGS TABLE's own header
+        # (Severity + Resolution columns), not on every numbered row, so a
+        # free-text table that merely says "Important" in some column is never
+        # mistaken for a finding — fail-closed without crying wolf.
+        for table in _findings_tables(artifact):
+            for entry in self._blocking_open(table):
+                if entry not in blocking_open:
+                    blocking_open.append(entry)
+
+        task_section = union("Task Execution with Agent Attribution")
         task_rows_incomplete = sum(
             1
             for m in _NUMBERED_ROW.finditer(task_section)
@@ -261,9 +425,13 @@ class BuildReportContract:
         overall_match = _OVERALL_LINE.search(artifact)
         overall_line = overall_match.group(0).strip() if overall_match else None
 
-        tdd_section = _section_after(artifact, "tdd_evidence")
-        tdd_evidence_rows = _table_data_rows(tdd_section) if tdd_section is not None else 0
-        tdd_evidence_text = tdd_section if tdd_section is not None else ""
+        tdd_section = union("TDD Evidence")
+        # Counted PER matched section and summed: each copy carries its own
+        # header row, so counting the joined string would subtract only one.
+        tdd_evidence_rows = sum(
+            _table_data_rows(section.body) for section in located["TDD Evidence"]
+        )
+        tdd_evidence_text = tdd_section
 
         task_ids_executed: set[str] = set()
         for m in _NUMBERED_ROW.finditer(task_section):
@@ -275,12 +443,11 @@ class BuildReportContract:
                 continue
             task_ids_executed.add(task_id)
 
-        task_reviews_section = _section_exact(artifact, "task_reviews")
-        task_reviews_section_present = task_reviews_section is not None
+        task_reviews_section_present = bool(located["Task Reviews"])
         task_review_rows: list[tuple[str, str]] = []
         task_review_rows_malformed: list[str] = []
-        if task_reviews_section is not None:
-            for m in _NUMBERED_ROW.finditer(task_reviews_section):
+        if task_reviews_section_present:
+            for m in _NUMBERED_ROW.finditer(union("Task Reviews")):
                 raw = m.group(0).strip()
                 cells = [c.strip() for c in raw.strip("|").split("|")]
                 # Fail-closed: a truncated or placeholder-bearing row becomes
@@ -291,17 +458,18 @@ class BuildReportContract:
                     continue
                 task_review_rows.append((cells[1], cells[4].lower()))
 
-        matrix_section = _section_exact(artifact, "traceability_matrix")
-        matrix_present = matrix_section is not None
+        matrix_present = bool(located["Traceability Matrix"])
         matrix_rows, matrix_rows_malformed = (
-            _parse_matrix_rows(matrix_section) if matrix_section is not None else ([], [])
+            _parse_matrix_rows(union("Traceability Matrix")) if matrix_present else ([], [])
         )
 
-        # First fence in the exact-slug section decides (the task-manifest
+        # First fence of the FIRST matching section decides (the task-manifest
         # precedent); a workflow_metrics fence under any OTHER heading is
-        # invisible here — the section is the contract's address.
-        metrics_section = _section_exact(artifact, "workflow_metrics")
-        metrics_fence = _YAML_FENCE.search(metrics_section) if metrics_section is not None else None
+        # invisible here — the section is the contract's address. Unlike the
+        # row scans, unioning is meaningless for a yaml document, so duplicates
+        # resolve deterministically to the first while MD.duplicate_* blocks.
+        metrics_sections = located["Workflow Metrics"]
+        metrics_fence = _YAML_FENCE.search(metrics_sections[0].body) if metrics_sections else None
         metrics_fence_present = metrics_fence is not None
         metrics_block: dict | None = None
         if metrics_fence is not None:
@@ -330,6 +498,7 @@ class BuildReportContract:
             matrix_present=matrix_present,
             metrics_fence_present=metrics_fence_present,
             metrics_block=metrics_block,
+            duplicate_sections=duplicate_sections,
         )
 
     @staticmethod
@@ -340,7 +509,9 @@ class BuildReportContract:
         entries: list[str] = []
         for m in _NUMBERED_ROW.finditer(review_verdict_section):
             cells = [c.strip() for c in m.group(0).strip("|").split("|")]
-            if len(cells) < 4 or cells[1].lower() not in _BLOCKING_SEVERITIES:
+            if len(cells) < 4 or not (
+                _BLOCKING_SEVERITIES & set(_SEVERITY_WORD.findall(cells[1].lower()))
+            ):
                 continue
             if _RESOLVED.match(cells[-1]):
                 continue
@@ -352,7 +523,7 @@ class BuildReportContract:
         if "schema version" not in parsed.metadata:
             return self._check_legacy(parsed)
 
-        findings: list[Finding] = []
+        findings: list[Finding] = self._check_duplicate_sections(parsed)
         findings.extend(self._check_schema_version(parsed))
         findings.extend(self._check_required_sections(parsed))
         findings.extend(self._check_verdict(parsed))
@@ -375,6 +546,29 @@ class BuildReportContract:
         if self._metrics_config is not None:
             findings.extend(self._check_metrics(parsed))
         return findings
+
+    def _check_duplicate_sections(self, parsed: _ParsedBuildReport) -> list[Finding]:
+        """`MD.duplicate_contract_section` (spec §6.4 item 6) — a fixed-name
+        contract section located more than once. Always-on: it guards the
+        ADDRESSING of sections the core rules read, so it cannot depend on any
+        opt-in family's arming. The scans themselves still read the union of
+        copies, so this finding reports a structural defect without ever
+        turning a duplicate into a hiding place."""
+        return [
+            Finding(
+                level=Level.FAIL,
+                rule="MD.duplicate_contract_section",
+                field=name,
+                message=(
+                    f"'{name}' appears {len(lines)} times — a contract section "
+                    "must have exactly one address; every copy is scanned "
+                    "(fail-closed), but the duplication itself blocks"
+                ),
+                expected=f"exactly one '## {name}' heading",
+                found="heading lines " + ", ".join(str(line) for line in lines),
+            )
+            for name, lines in parsed.duplicate_sections
+        ]
 
     def _check_legacy(self, parsed: _ParsedBuildReport) -> list[Finding]:
         findings = [
@@ -417,7 +611,7 @@ class BuildReportContract:
     def _check_required_sections(self, parsed: _ParsedBuildReport) -> list[Finding]:
         findings: list[Finding] = []
         for section in self._required:
-            if _slug(section) not in parsed.headings:
+            if slug(section) not in parsed.headings:
                 findings.append(
                     Finding(
                         level=Level.FAIL,
@@ -484,7 +678,8 @@ class BuildReportContract:
 
     def _check_fix_rounds(self, parsed: _ParsedBuildReport) -> list[Finding]:
         raw = parsed.metadata.get("fix rounds used")
-        match = _FRACTION.match(raw) if raw is not None else None
+        pattern = _FRACTION if self._fix_rounds_override is None else _FRACTION_WITH_OVERRIDE
+        match = pattern.match(raw) if raw is not None else None
         if match is None:
             return [
                 Finding(
@@ -498,7 +693,26 @@ class BuildReportContract:
             ]
         used, budget = int(match.group(1)), int(match.group(2))
         findings: list[Finding] = []
-        if used > budget:
+        override = None
+        if self._fix_rounds_override is not None:
+            override = _FIX_ROUNDS_OVERRIDE.search(raw or "")
+        if used > budget and override is not None:
+            # Authorized, attributed and justified: recorded as a visible WARN
+            # so the overrun stays auditable. The budget itself is untouched.
+            findings.append(
+                Finding(
+                    level=Level.WARN,
+                    rule="BR.fix_rounds_override",
+                    field="Fix rounds used",
+                    message=(
+                        f"fix rounds used ({used}) exceeds the budget ({budget}) "
+                        "under an authorized override"
+                    ),
+                    expected=f"used <= {budget}, or an attributed override",
+                    found=f"author={override.group(1)}; rationale={override.group(2)}",
+                )
+            )
+        elif used > budget:
             findings.append(
                 Finding(
                     level=Level.FAIL,
