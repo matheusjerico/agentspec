@@ -178,6 +178,19 @@ def _build_report_contract(
     required = _phase_required_sections("build", data, contracts_file)
     block = data["build"]
 
+    # Fail-closed configuration (Codex review finding 1): a top-level opt-in
+    # block that is PRESENT but not a mapping (explicit null, string, list,
+    # int — the indentation-drift scenario) is an operational error, never a
+    # silent disarm of its rule family. Absence stays the sanctioned dormant
+    # path, byte-compatible with contracts files that predate each block.
+    for key in ("tdd_policy", "task_review", "traceability", "workflow_metrics"):
+        if key in data and not isinstance(data[key], dict):
+            raise _OperationalError(
+                f"{key} must be a mapping in {contracts_file.name} — got "
+                f"{type(data[key]).__name__}; a present-but-invalid block fails "
+                f"closed instead of silently disarming its rules"
+            )
+
     execution = block.get("execution")
     final_review = execution.get("final_review") if isinstance(execution, dict) else None
     if not isinstance(final_review, dict):
@@ -272,7 +285,22 @@ def _build_report_contract(
             )
         task_review_verdicts = review_verdicts
 
-    matrix_must_coverage = isinstance(data.get("traceability"), dict)
+    # The guard above already rejected a non-mapping `traceability`; a dict
+    # must additionally carry the verification_types vocabulary before it may
+    # arm the matrix rules — a structurally empty block is config drift, not
+    # a valid opt-in (same posture as the design-side contract).
+    matrix_must_coverage = False
+    traceability = data.get("traceability")
+    if isinstance(traceability, dict):
+        trace_types = traceability.get("verification_types")
+        if not isinstance(trace_types, list) or not all(
+            isinstance(v, str) for v in trace_types
+        ):
+            raise _OperationalError(
+                f"traceability.verification_types must be a list of strings "
+                f"in {contracts_file.name}"
+            )
+        matrix_must_coverage = True
 
     metrics_config: dict[str, Any] | None = None
     workflow_metrics = data.get("workflow_metrics")
@@ -388,6 +416,20 @@ def _design_phase_contract(data: dict[str, Any], contracts_file: Path) -> Design
     `TX.*`; when it's absent, `verification_types=None` leaves `TX.*` off —
     identical posture to every other opt-in family in this CLI."""
     required = _phase_required_sections("design", data, contracts_file)
+
+    # Fail-closed configuration (Codex review finding 1, design side): a
+    # present-but-non-mapping block is an operational error — it must never
+    # silently disarm TM.*/TX.* nor silently downgrade the run to the plain
+    # section-only contract (the router gates on key PRESENCE, so an invalid
+    # value always reaches this validation).
+    for key in ("task_manifest", "traceability"):
+        if key in data and not isinstance(data[key], dict):
+            raise _OperationalError(
+                f"{key} must be a mapping in {contracts_file.name} — got "
+                f"{type(data[key]).__name__}; a present-but-invalid block fails "
+                f"closed instead of silently disarming its rules"
+            )
+
     block = data.get("task_manifest")
 
     if isinstance(block, dict):
@@ -442,7 +484,7 @@ def _lint_phase(path: Path, phase: str, contracts_file: Path, legacy_mode: str) 
     elif phase == "define" and isinstance(data.get("risk_profiles"), dict):
         contract = _define_phase_contract(data, contracts_file)
     elif phase == "design" and (
-        isinstance(data.get("task_manifest"), dict) or isinstance(data.get("traceability"), dict)
+        "task_manifest" in data or "traceability" in data
     ):
         contract = _design_phase_contract(data, contracts_file)
     else:

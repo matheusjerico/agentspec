@@ -8,6 +8,8 @@ so each test's intent (what changed, what should break) stays legible.
 
 from __future__ import annotations
 
+import pytest
+
 from spec_linter.contracts.build_report import BuildReportContract
 from spec_linter.engine import lint
 from spec_linter.verdict import Level, Verdict
@@ -884,3 +886,103 @@ def test_decoy_matrix_heading_does_not_mask_missing_matrix() -> None:
     report += "\n## Traceability Matrix Notes\n\nProse only.\n"
     verdict = lint(report, _contract_with_matrix())
     assert "BR.matrix_missing" in [f.rule for f in verdict.findings]
+
+
+# --- BR.matrix_row_malformed / BR.task_review_row_malformed (fail-closed) ----
+# Codex review findings 2–3: truncated or placeholder-bearing rows were
+# silently dropped, letting a MUST row or a dirty verdict hide by truncation.
+
+
+def _raw_matrix_section(raw_rows: list[str]) -> str:
+    lines = [
+        "\n## Traceability Matrix\n",
+        "| # | REQ | Priority | Tasks | Tests | Verification Type | Result | Review |",
+        "|---|-----|----------|-------|-------|-------------------|--------|--------|",
+    ]
+    lines.extend(raw_rows)
+    return "\n".join(lines) + "\n"
+
+
+def test_truncated_must_matrix_row_fails_malformed() -> None:
+    report = VALID_REPORT + _raw_matrix_section(["| 1 | REQ-1 | MUST | TASK-A |"])
+    verdict = _lint_with_matrix(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.matrix_row_malformed" in _rules(verdict)
+
+
+@pytest.mark.parametrize("cells", list(range(2, 8)))
+def test_matrix_row_every_short_cardinality_fails(cells: int) -> None:
+    row = "| 1 | " + " | ".join(["x"] * (cells - 1)) + " |"
+    report = VALID_REPORT + _raw_matrix_section([row])
+    verdict = _lint_with_matrix(report)
+    assert "BR.matrix_row_malformed" in _rules(verdict)
+    assert verdict.level == Level.FAIL
+
+
+def test_placeholder_req_matrix_row_fails_malformed() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("{REQ id}", "MUST", "tests/test_x.py", "Pass")]
+    )
+    verdict = _lint_with_matrix(report)
+    assert "BR.matrix_row_malformed" in _rules(verdict)
+
+
+def test_placeholder_priority_matrix_row_fails_malformed() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "{MUST/SHOULD}", "tests/test_x.py", "Pass")]
+    )
+    verdict = _lint_with_matrix(report)
+    assert "BR.matrix_row_malformed" in _rules(verdict)
+
+
+def test_malformed_row_leaves_intact_rows_untouched() -> None:
+    report = VALID_REPORT + _raw_matrix_section(
+        [
+            "| 1 | REQ-1 | MUST | TASK-A | tests/test_x.py | unit | Pass | clean |",
+            "| 2 | REQ-2 | MUST | TASK-B |",
+        ]
+    )
+    verdict = _lint_with_matrix(report)
+    rules = _rules(verdict)
+    assert rules.count("BR.matrix_row_malformed") == 1
+    assert "BR.must_uncovered" not in rules  # the intact MUST row is covered
+
+
+def test_intact_matrix_rows_produce_no_malformed_finding() -> None:
+    report = VALID_REPORT + _filled_matrix_section(
+        [("REQ-1", "MUST", "tests/test_x.py", "Pass")]
+    )
+    assert "BR.matrix_row_malformed" not in _rules(_lint_with_matrix(report))
+
+
+def test_short_review_row_hiding_dirty_fails_malformed_at_low_risk() -> None:
+    # Codex finding 3: at low risk the missing-rule is silent by policy and a
+    # 4-cell row never reached task_review_rows — a dirty verdict could hide.
+    report = _report_with_risk_level(
+        _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2"), "low"
+    )
+    report += (
+        "\n## Task Reviews\n\n"
+        "| # | Task ID | Risk | Reviewer | Verdict |\n"
+        "|---|---------|------|----------|---------|\n"
+        "| 1 | TASK-1 | low | dirty |\n"
+    )
+    verdict = _lint_with_task_review(report)
+    assert verdict.level == Level.FAIL
+    assert "BR.task_review_row_malformed" in _rules(verdict)
+
+
+def test_placeholder_verdict_review_row_fails_malformed() -> None:
+    report = _report_with_risk_level(
+        _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2"), "low"
+    )
+    report += _task_reviews_section([("TASK-1", "{verdict}")])
+    verdict = _lint_with_task_review(report)
+    assert "BR.task_review_row_malformed" in _rules(verdict)
+    assert verdict.level == Level.FAIL
+
+
+def test_intact_review_rows_produce_no_malformed_finding() -> None:
+    report = _report_with_task_ids(VALID_REPORT, "TASK-1", "TASK-2")
+    report += _task_reviews_section([("TASK-1", "clean"), ("TASK-2", "clean")])
+    assert "BR.task_review_row_malformed" not in _rules(_lint_with_task_review(report))

@@ -93,6 +93,14 @@ FAIL (exit 1, decided by the engine); input that cannot be loaded as a YAML
 mapping — or a missing file — is an ERROR (exit 2). ERROR messages go to stderr;
 verdict output goes to stdout.
 
+**Configuration is fail-closed.** A top-level opt-in block in the contracts
+file (`tdd_policy`, `task_review`, `traceability`, `workflow_metrics`,
+`task_manifest`) that is PRESENT but not a valid mapping — explicit null, a
+string, a list, an indentation-drifted body — is an exit-2 ERROR, never a
+silent disable of its rule family. Only a genuinely ABSENT key leaves a family
+dormant. If the linter suddenly exits 2 naming a block, fix the contracts
+YAML; do not remove enforcement to make the error go away.
+
 ### Modes
 
 - **Spec linting** (default): lints a YAML spec file, or a directory of

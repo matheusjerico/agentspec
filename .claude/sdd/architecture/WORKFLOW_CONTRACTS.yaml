@@ -1,9 +1,9 @@
 # AgentSpec - Workflow Contracts
 # 5-Phase Development Workflow with Agent Matching and Delegation
-# Version: 3.16.0
+# Version: 3.17.0
 # Date: 2026-07-29
 
-version: "3.16.0"
+version: "3.17.0"
 name: "AgentSpec"
 description: "5-phase spec-driven development workflow with agent orchestration for software and data engineering"
 
@@ -1076,6 +1076,11 @@ quality:
 # =============================================================================
 
 version_history:
+  - version: "3.17.0"
+    date: "2026-07-30"
+    changes:
+      - "LINTER_FAIL_CLOSED (Codex review hardening): three fail-open paths closed. (1) Present-but-invalid top-level opt-in blocks (tdd_policy, task_review, traceability, workflow_metrics on the build side; task_manifest, traceability on the design side) are now exit-2 operational errors instead of silent disarms — absence remains the sanctioned dormant path; build-side traceability additionally requires verification_types before arming the matrix rules, and the design router gates on key presence so an invalid value can never silently downgrade to the plain contract. (2) Truncated or placeholder-bearing Traceability Matrix rows are BR.matrix_row_malformed / TX.matrix_row_malformed FAILs instead of silent drops that hid MUST rows from coverage. (3) Truncated or placeholder-bearing Task Reviews rows are BR.task_review_row_malformed FAILs at any risk level — a dirty verdict can no longer hide by truncation. No vocabulary changes; unconfigured repos see zero new behavior."
+
   - version: "3.16.0"
     date: "2026-07-29"
     changes:
