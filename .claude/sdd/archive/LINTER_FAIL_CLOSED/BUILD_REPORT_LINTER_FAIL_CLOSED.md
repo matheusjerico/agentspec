@@ -11,7 +11,7 @@
 | **Author** | build-agent (autopilot conduct) |
 | **DEFINE** | [DEFINE_LINTER_FAIL_CLOSED.md](../features/DEFINE_LINTER_FAIL_CLOSED.md) |
 | **DESIGN** | [DESIGN_LINTER_FAIL_CLOSED.md](../features/DESIGN_LINTER_FAIL_CLOSED.md) |
-| **Status** | Complete |
+| **Status** | Shipped |
 | **Schema Version** | 2 |
 | **TDD Mode** | required |
 | **Risk Level** | medium (echo from DEFINE) |
